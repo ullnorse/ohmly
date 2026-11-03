@@ -23,7 +23,7 @@ function loopPt(r,s){const w=r.x1-r.x0,h=r.y1-r.y0,P=2*(w+h);let d=((s%1)+1)%1*P
   if(d<h) return [r.x0,r.y1-d]; d-=h; if(d<w) return [r.x0+d,r.y0]; d-=w; if(d<h) return [r.x1,r.y0+d]; d-=h; return [r.x1-d,r.y1];}
 
 /* smoke particles shared by circuit labs */
-function smoke(list,x,y){list.push({x:x+BC.rand(-6,6),y,vy:BC.rand(-30,-50),vx:BC.rand(-8,8),r:BC.rand(4,8),life:1.6});}
+function smoke(list,x,y){if(BC.reduced) return; list.push({x:x+BC.rand(-6,6),y,vy:BC.rand(-30,-50),vx:BC.rand(-8,8),r:BC.rand(4,8),life:1.6});}
 function drawSmoke(g,list,dt){for(let i=list.length-1;i>=0;i--){const p=list[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.r+=6*dt;p.life-=dt*0.7;if(p.life<=0){list.splice(i,1);continue;}g.fillStyle=css("--muted");g.globalAlpha=p.life*0.35;g.beginPath();g.arc(p.x,p.y,p.r,0,7);g.fill();g.globalAlpha=1;}}
 
 const L=BC.LABS={};
@@ -149,13 +149,15 @@ L.capcode={title:"Capacitor code decoder",sub:"three-digit markings",html:()=>`
  init(){$("#cp-q").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;$("#cp-in").value=b.dataset.c;this.run();BC.touchLab("capcode");});},
  run(){const s=$("#cp-in").value.trim(); const m=/^(\d)(\d)(\d)$/.exec(s);
   if(!m){["cp-pf","cp-nf","cp-uf"].forEach(i=>setT(i,"—")); note("cp-n","Enter three digits, like 104 or 472.","warn"); return;}
-  const pf=(+m[1]*10+ +m[2])*Math.pow(10,+m[3]); setT("cp-pf",pf.toLocaleString()+" pF"); setT("cp-nf",+(pf/1e3).toPrecision(4)+" nF"); setT("cp-uf",+(pf/1e6).toPrecision(4)+" µF");
-  note("cp-n",`${m[1]}${m[2]} followed by ${m[3]} zero${m[3]==="1"?"":"s"} = ${pf.toLocaleString()} pF.${pf===1e5?" 100 nF is the classic decoupling cap. You'll use hundreds of them.":""}`);}};
+  const pf=(+m[1]*10+ +m[2])*(+m[3]>7?(+m[3]===8?0.01:0.1):Math.pow(10,+m[3])); setT("cp-pf",pf.toLocaleString()+" pF"); setT("cp-nf",+(pf/1e3).toPrecision(4)+" nF"); setT("cp-uf",+(pf/1e6).toPrecision(4)+" µF");
+  note("cp-n",`${m[1]}${m[2]} ${+m[3]>7?`× ${+m[3]===8?"0.01":"0.1"} (a third digit of 8 or 9 is a fraction, not zeros)`:`followed by ${m[3]} zero${m[3]==="1"?"":"s"}`} = ${pf.toLocaleString()} pF.${pf===1e5?" 100 nF is the classic decoupling cap. You'll use hundreds of them.":""}`);}};
 
 /* ================= CH4 ================= */
 const DIODES={si:{n:"Silicon (1N4148)",vf:0.7},sch:{n:"Schottky (1N5817)",vf:0.32},red:{n:"Red LED",vf:1.9},blue:{n:"Blue LED",vf:3.0},zen:{n:"Zener 5.1 V",vf:0.7,vz:5.1}};
 const nVt=0.0517;
-function diodeI(d,V){const Is=0.01/Math.exp(d.vf/nVt); let I=Is*(Math.exp(Math.min(V/nVt,60))-1); if(d.vz&&V<0) I-=1e-3*Math.exp(Math.min((-V-d.vz)/0.03,60)); return I;}
+/* exp argument capped at 600 only to avoid Infinity (e^600 ≈ 1e260); the bisection range ±15 V never reaches it, so I keeps growing past Vf */
+const ex=x=>Math.exp(Math.min(x,600));
+function diodeI(d,V){const Is=0.01/ex(d.vf/nVt); let I=Is*(ex(V/nVt)-1); if(d.vz&&V<0) I-=1e-3*ex((-V-d.vz)/0.03); return I;}
 function diodeQ(d,Vs,R){let lo=-15,hi=15;for(let k=0;k<80;k++){const m=(lo+hi)/2; ((Vs-m)/R-diodeI(d,m))>0?lo=m:hi=m;} const V=(lo+hi)/2; return {V,I:(Vs-V)/R};}
 BC.diodeQ=diodeQ; BC.DIODES=DIODES;
 L.diode={title:"Diode I–V curve and load line",sub:"find the operating point",html:()=>`
@@ -207,7 +209,7 @@ L.led={title:"Don't fry the LED",sub:"pick a resistor, see what happens",html:()
   $("#ld-fix").addEventListener("click",()=>{this._st.dead=false; over=0; this.run();});
   $("#ld-best").addEventListener("click",()=>{const Vs=+$("#ld-vs").value,l=LEDS[$("#ld-c").value]; const r=BC.e12Up((Vs-l.vf)/0.01); const i=LEDR.indexOf(r); if(i>0){$("#ld-r").value=i; this._st.dead=false; over=0; this.run();}});
   BC.anim(dt=>{const cv=$("#ld-cv"); if(!cv) return; const {g,W,H}=BC.fit(cv), st=this._st, l=LEDS[$("#ld-c").value];
-   if(!st.dead && st.I>0.04){ over+=dt; if(over>0.35){ st.dead=true; BC.beep("pop"); BC.S.fried=(BC.S.fried||0)+1; BC.save(); BC.badge("smoke"); for(let k=0;k<16;k++) smoke(sm,W/2+60+BC.rand(-8,8),40); this.run(); } } else over=0;
+   if(!st.dead && st.I>0.04){ over+=dt; if(over>0.35||BC.reduced){ st.dead=true; BC.beep("pop"); BC.S.fried=(BC.S.fried||0)+1; BC.save(); BC.badge("smoke"); for(let k=0;k<16;k++) smoke(sm,W/2+60+BC.rand(-8,8),40); this.run(); } } else over=0;
    const r={x0:50,x1:W-50,y0:46,y1:H-30}, ym=(r.y0+r.y1)/2, ra=W/2-110, rb=W/2-20, lx=W/2+60;
    const I=st.dead?0:st.I; s+=(I>0?clamp((Math.log10(I*1e6)+0.5)/6,0.03,1.4)*0.22:0)*dt;
    g.strokeStyle=css("--muted"); g.lineWidth=2; line(g,[[r.x0,ym-12],[r.x0,r.y0],[ra,r.y0]]); line(g,[[rb,r.y0],[lx-14,r.y0]]); line(g,[[lx+14,r.y0],[r.x1,r.y0],[r.x1,r.y1],[r.x0,r.y1],[r.x0,ym+12]]);
@@ -279,8 +281,8 @@ L.scope={title:"Oscilloscope simulator",sub:"knobs, trigger and a mystery signal
   $("#sc-chk").addEventListener("click",()=>{const m=self.st.myst; if(!m) return; const gf=+$("#sc-gf").value, gv=+$("#sc-gv").value, vpp=2*m.a;
     const okf=gf>0&&Math.abs(gf-m.f)/m.f<0.1, okv=gv>0&&Math.abs(gv-vpp)/vpp<0.12;
     const r=$("#sc-mr");
-    if(okf&&okv){r.className="note good"; r.textContent=`Nailed it: ${fmt(m.f,"Hz")}, ${vpp} V peak-to-peak (${WAVES[m.w].toLowerCase()}${m.o?`, ${m.o} V offset`:""}).`; BC.beep("good"); BC.addXP(30,"mystery signal solved"); BC.S.scoped=(BC.S.scoped||0)+1; BC.save(); BC.badge("probe"); BC.confetti();
-      setTimeout(()=>{ if(self.st.myst){ self.st.myst=null; $("#sc-myst").click(); } },1800);}
+    if(okf&&okv){r.className="note good"; r.textContent=`Nailed it: ${fmt(m.f,"Hz")}, ${vpp} V peak-to-peak (${WAVES[m.w].toLowerCase()}${m.o?`, ${m.o} V offset`:""}).`; BC.beep("good"); BC.once("myst",30,"mystery signal solved"); BC.S.scoped=(BC.S.scoped||0)+1; BC.save(); BC.badge("probe"); BC.confetti();
+      clearTimeout(self.mt); self.mt=setTimeout(()=>{ const b=$("#sc-myst"); if(b&&self.st.myst===m) b.click(); },1800); BC.leave.push(()=>clearTimeout(self.mt));}
     else {r.className="note bad"; r.textContent=`${okf?"Frequency is right.":"Frequency is off. Measure the time for one full cycle, then take 1 / that time."} ${okv?"Vpp is right.":"Vpp is off. Count divisions from the lowest point to the highest, times volts per division."}`; BC.beep("bad");}});
   BC.anim(dt=>{const cv=$("#sc-cv"); if(!cv) return; const {g,W,H}=BC.fit(cv), p=params(), st=stats(p);
    const vd=+$("#sc-vd").value, td=+$("#sc-td").value, tl=+$("#sc-tl").value, ac=$("#sc-cp").value==="ac", trig=$("#sc-tr").value==="on";
@@ -350,18 +352,23 @@ L.filter={title:"RC filter: see it and hear it",sub:"first order",html:()=>`
  init(){const self=this; let nodes=null, arpT=null;
   const stop=()=>{ if(nodes){ try{nodes.src.stop();}catch(e){} nodes.out.disconnect(); nodes=null; } clearInterval(arpT); arpT=null; const b=$("#fl-play"); if(b) b.textContent="▶ Listen through filter"; };
   BC.leave.push(stop);
-  self.apply=()=>{ if(!nodes) return; const ac=BC.audio(); const fc=clamp(self.fc,20,20000); nodes.f1.type=nodes.f2.type=$("#fl-m").value==="lp"?"lowpass":"highpass"; nodes.f1.frequency.setTargetAtTime(fc,ac.currentTime,0.03); nodes.f2.frequency.setTargetAtTime(fc,ac.currentTime,0.03); const byp=$("#fl-byp").checked; nodes.dry.gain.value=byp?1:0; nodes.wet.gain.value=byp?0:1; };
+  /* one-pole IIR via the bilinear transform: exactly first order (-20 dB/decade) like the plot. A biquad would be 2nd order, and two would be 4th. Coefficients are fixed per node, so each change swaps in a fresh node. */
+  self.apply=()=>{ if(!nodes) return; const ac=BC.audio(); if(!ac){ stop(); return; }
+   const K=Math.tan(Math.PI*clamp(self.fc,20,20000)/ac.sampleRate), k=1/(1+K), lp=$("#fl-m").value==="lp";
+   const f=ac.createIIRFilter(lp?[K*k,K*k]:[k,-k],[1,(K-1)*k]);
+   if(nodes.f){ try{nodes.src.disconnect(nodes.f); nodes.f.disconnect();}catch(e){} }
+   nodes.src.connect(f); f.connect(nodes.wet); nodes.f=f; const byp=$("#fl-byp").checked; nodes.dry.gain.value=byp?1:0; nodes.wet.gain.value=byp?0:1; };
   $("#fl-byp").addEventListener("change",()=>self.apply());
   $("#fl-src").addEventListener("change",()=>{ if(nodes){stop(); $("#fl-play").click();} });
   $("#fl-play").addEventListener("click",()=>{
    if(nodes){stop();return;} const ac=BC.audio(); if(!ac) return; BC.touchLab("filter");
    const out=ac.createGain(); out.gain.value=0.18; out.connect(ac.destination);
-   const f1=ac.createBiquadFilter(), f2=ac.createBiquadFilter(); f1.Q.value=f2.Q.value=0.5; const wet=ac.createGain(), dry=ac.createGain();
+   const wet=ac.createGain(), dry=ac.createGain();
    let src; const kind=$("#fl-src").value;
    if(kind==="noise"){ src=ac.createBufferSource(); src.buffer=getNoise(ac); src.loop=true; }
    else { src=ac.createOscillator(); src.type="sawtooth"; src.frequency.value=110; if(kind==="music"){ const notes=[110,138.6,164.8,220,164.8,138.6]; let k=0; arpT=setInterval(()=>{ src.frequency.setValueAtTime(notes[k++%notes.length],ac.currentTime); },180);} }
-   src.connect(dry); src.connect(f1); f1.connect(f2); f2.connect(wet); wet.connect(out); dry.connect(out); src.start();
-   nodes={src,out,f1,f2,wet,dry}; self.apply(); $("#fl-play").textContent="■ Stop";
+   src.connect(dry); wet.connect(out); dry.connect(out); src.start();
+   nodes={src,out,f:null,wet,dry}; self.apply(); $("#fl-play").textContent="■ Stop";
   });},
  run(){const m=$("#fl-m").value,R=lv("fl-r"),C=lv("fl-c"),f=lv("fl-f"),fc=1/(2*Math.PI*R*C); this.fc=fc; this.apply&&this.apply();
   out("fl-r",fmt(R,"Ω")); out("fl-c",fmt(C,"F")); out("fl-f",fmt(f,"Hz"));
@@ -462,7 +469,7 @@ L.bits={title:"Bit flipper",sub:"binary, hex and a counter",html:()=>`
   $("#bt-row").parentElement.addEventListener("click",e=>{const b=e.target.closest("[data-op]"); if(!b) return; const op=b.dataset.op; BC.touchLab("bits");
    if(op==="run"){runOn=!runOn; b.textContent=runOn?"■ Stop counter":"▶ Run counter"; return;}
    self.v=({inc:v=>(v+1)&255,dec:v=>(v+255)&255,shl:v=>(v<<1)&255,shr:v=>v>>1,not:v=>(~v)&255,clr:()=>0})[op](self.v); draw();});
-  BC.anim(dt=>{ if(!runOn) return; acc+=dt; if(acc>0.12){acc=0; self.v=(self.v+1)&255; draw();} });
+  BC.anim(dt=>{ if(!runOn) return; acc+=dt; if(acc>0.12){acc=0; self.v=(self.v+1)&255; draw();} },()=>runOn);
   draw();}};
 
 L.adc={title:"ADC: from smooth to steps",sub:"quantization",html:()=>`
@@ -483,7 +490,7 @@ L.pwm={title:"PWM: speed and brightness",sub:"duty cycle",html:()=>`
   <div class="pwmVis"><canvas id="pw-fan" aria-label="Spinning fan"></canvas><div class="led big" id="pw-led"></div></div>
   <canvas class="plot" id="pw-cv" aria-label="PWM waveform"></canvas>`,
  init(){const self=this; let ang=0, w=0;
-  BC.anim(dt=>{const cv=$("#pw-fan"); if(!cv) return; const D=+$("#pw-d").value/100, target=D*(+$("#pw-v").value/12)*14; w+= (target-w)*Math.min(1,dt*1.8); ang+=w*dt;
+  BC.anim(dt=>{const cv=$("#pw-fan"); if(!cv) return; const D=+$("#pw-d").value/100, target=D*(+$("#pw-v").value/12)*14; w=BC.reduced?target:w+(target-w)*Math.min(1,dt*1.8); ang+=w*dt;
    setT("pw-rpm",Math.round(w/(2*Math.PI)*60*20)+" rpm");
    const {g,W,H}=BC.fit(cv), cx=W/2, cy=H/2, R=Math.min(W,H)/2-8; g.strokeStyle=css("--line"); g.lineWidth=2; g.beginPath(); g.arc(cx,cy,R,0,7); g.stroke();
    for(let k=0;k<5;k++){const a=ang+k*2*Math.PI/5; g.save(); g.translate(cx,cy); g.rotate(a); g.fillStyle=css(k===0?"--accent":"--trace"); g.globalAlpha=.85; g.beginPath(); g.ellipse(R*0.5,0,R*0.42,R*0.16,0.35,0,7); g.fill(); g.restore();}
@@ -504,7 +511,7 @@ L.servo={title:"Hobby servo",sub:"pulse width sets angle",html:()=>`
   BC.leave.push(()=>document.removeEventListener("click",self._h));
   $("#sv-sweep").addEventListener("click",()=>{sweep=!sweep; BC.touchLab("servo");});
   BC.anim((dt,t)=>{const cv=$("#sv-cv"); if(!cv) return; if(sweep){sp+=dt; $("#sv-p").value=(1.5+0.5*Math.sin(sp*1.6)).toFixed(3); self.run();}
-   const pw=+$("#sv-p").value, tgt=clamp((pw-1)*180,0,180); const mv=600*dt*(60/0.12)/600; cur+=clamp(tgt-cur,-mv,mv);
+   const pw=+$("#sv-p").value, tgt=clamp((pw-1)*180,0,180); const mv=600*dt*(60/0.12)/600; cur=BC.reduced?tgt:cur+clamp(tgt-cur,-mv,mv);
    const {g,W,H}=BC.fit(cv), cx=Math.min(W*0.3,170), cy=H*0.5;
    g.fillStyle=css("--sunk"); g.strokeStyle=css("--line"); g.lineWidth=1.5; g.fillRect(cx-60,cy-36,120,72); g.strokeRect(cx-60,cy-36,120,72);
    g.strokeStyle=css("--line"); g.beginPath(); g.arc(cx,cy,64,Math.PI,2*Math.PI); g.stroke();
@@ -513,7 +520,7 @@ L.servo={title:"Hobby servo",sub:"pulse width sets angle",html:()=>`
    g.fillStyle=css("--accent"); g.beginPath(); g.arc(cx,cy,7,0,7); g.fill();
    const x0=cx+110, w=W-x0-14, yb=cy+30, yt=cy-30; if(w>120){ g.strokeStyle=css("--trace"); g.lineWidth=2; g.beginPath(); g.moveTo(x0,yb); const frame=w/2; for(let k=0;k<2;k++){const xs=x0+k*frame, pwx=pw/20*frame*3; g.lineTo(xs,yb); g.lineTo(xs,yt); g.lineTo(xs+pwx,yt); g.lineTo(xs+pwx,yb);} g.lineTo(x0+w,yb); g.stroke();
      txt(g,pw.toFixed(2)+" ms",x0+4,yt-8,"left","--ink",11); txt(g,"20 ms frame (pulse drawn 3× wider)",x0,yb+18,"left","--muted",10); }
-  });},
+  },()=>sweep);},
  run(){const pw=+$("#sv-p").value; out("sv-p",pw.toFixed(2)+" ms"); setT("sv-a",Math.round(clamp((pw-1)*180,0,180))+"°"); setT("sv-d",(pw/20*100).toFixed(1)+"%");
   note("sv-n",pw<1||pw>2?"Outside the usual 1–2 ms range. Many servos go further, but push too far and they grind against their end stops.":"The servo's own controller compares this pulse with its position sensor and drives the motor until they match.",pw<1||pw>2?"warn":"");}};
 
@@ -530,7 +537,7 @@ L.stepper={title:"Stepper motor sequencer",sub:"energize coils in order",html:()
   $("#st-m").addEventListener("change",()=>{self.i=0;});
   BC.anim(dt=>{const cv=$("#st-cv"); if(!cv) return; if(run){acc+=dt; const per=1/+$("#st-s").value; while(acc>per){acc-=per; self.i++; self.n++; self.run();}}
    const s=self.seq(); const pos=[[0,-1],[1,0],[0,1],[-1,0]]; let vx=0,vy=0; s.forEach((on,k)=>{if(on){vx+=pos[k][0];vy+=pos[k][1];}});
-   const tgt=Math.atan2(vy,vx); let d=tgt-ang; while(d>Math.PI)d-=2*Math.PI; while(d<-Math.PI)d+=2*Math.PI; ang+=d*Math.min(1,dt*14);
+   const tgt=Math.atan2(vy,vx); let d=tgt-ang; while(d>Math.PI)d-=2*Math.PI; while(d<-Math.PI)d+=2*Math.PI; ang+=BC.reduced?d:d*Math.min(1,dt*14);
    const {g,W,H}=BC.fit(cv), cx=W/2, cy=H/2, R=Math.min(H/2-20,110);
    ["A","B","A′","B′"].forEach((nm,k)=>{const [px,py]=pos[k], x=cx+px*R, y=cy+py*R, on=s[k];
      g.save(); g.translate(x,y); g.rotate(Math.atan2(py,px)); g.fillStyle=on?css("--accent"):css("--sunk"); g.strokeStyle=css("--line"); g.lineWidth=1.5;
@@ -540,7 +547,7 @@ L.stepper={title:"Stepper motor sequencer",sub:"energize coils in order",html:()
    g.strokeStyle=css("--line"); g.lineWidth=1.5; g.beginPath(); g.arc(cx,cy,R*0.55,0,7); g.stroke();
    g.save(); g.translate(cx,cy); g.rotate(ang); g.fillStyle=css("--bad"); g.beginPath(); g.moveTo(R*0.5,0); g.lineTo(0,-10); g.lineTo(0,10); g.fill(); g.fillStyle=css("--trace"); g.beginPath(); g.moveTo(-R*0.5,0); g.lineTo(0,-10); g.lineTo(0,10); g.fill(); g.restore();
    txt(g,"N",cx+Math.cos(ang)*R*0.28,cy+Math.sin(ang)*R*0.28+4,"center","--surface",11);
-  });},
+  },()=>run);},
  seq(){const S=SEQ[$("#st-m").value]; return S[((this.i%S.length)+S.length)%S.length];},
  run(){out("st-s",$("#st-s").value+" steps/s"); const half=$("#st-m").value==="half"; setT("st-n",this.n); setT("st-a",(this.n*(half?0.9:1.8)).toFixed(1)+"°"); setT("st-c",this.seq().join(" "));}};
 
@@ -563,12 +570,12 @@ L.tone={title:"Tone lab and hearing test",sub:"20 Hz to 20 kHz",html:()=>`
  init(){const self=this; let o=null,g=null,sweep=null;
   const stop=()=>{ if(o){ try{o.stop();}catch(e){} o=null; } if(sweep){cancelAnimationFrame(sweep.raf); sweep=null;} const b=$("#tn-play"); if(b) b.textContent="▶ Play"; const t=$("#tn-test"); if(t) t.textContent="How high can you hear?"; };
   BC.leave.push(stop);
-  const start=()=>{const ac=BC.audio(); if(!ac) return; o=ac.createOscillator(); g=ac.createGain(); o.type=$("#tn-w").value; o.frequency.value=self.f; g.gain.value=+$("#tn-v").value; o.connect(g).connect(ac.destination); o.start(); $("#tn-play").textContent="■ Stop"; BC.touchLab("tone");};
-  self.upd=()=>{ if(o){ o.type=$("#tn-w").value; o.frequency.setTargetAtTime(self.f,BC.audio().currentTime,0.01); g.gain.setTargetAtTime(+$("#tn-v").value,BC.audio().currentTime,0.02);} };
+  const start=()=>{const ac=BC.audio(); if(!ac) return false; o=ac.createOscillator(); g=ac.createGain(); o.type=$("#tn-w").value; o.frequency.value=self.f; g.gain.value=+$("#tn-v").value; o.connect(g).connect(ac.destination); o.start(); $("#tn-play").textContent="■ Stop"; BC.touchLab("tone"); return true;};
+  self.upd=()=>{ if(o){ o.type=$("#tn-w").value; const t=o.context.currentTime; o.frequency.setTargetAtTime(self.f,t,0.01); g.gain.setTargetAtTime(+$("#tn-v").value,t,0.02);} };
   $("#tn-play").addEventListener("click",()=>{ if(o&&!sweep){stop();} else {stop(); start();} });
   $("#tn-test").addEventListener("click",()=>{
-   if(sweep){ const f=self.f; stop(); BC.S.hi.hearing=Math.max(BC.S.hi.hearing||0,Math.round(f)); BC.save(); note("tn-n",`You stopped hearing it around ${fmt(f,"Hz")}. ${f>16000?"Excellent high-frequency hearing.":f>12000?"Typical adult range.":"Try lower volume and a quiet room, or check your speakers. Many laptop speakers roll off early."}`,"good"); BC.addXP(10,"hearing test"); return; }
-   stop(); $("#tn-w").value="sine"; $("#tn-f").value=Math.log10(8000); self.run(); start(); $("#tn-test").textContent="I can't hear it any more"; $("#tn-play").textContent="■ Stop";
+   if(sweep){ const f=self.f; stop(); BC.S.hi.hearing=Math.max(BC.S.hi.hearing||0,Math.round(f)); BC.save(); note("tn-n",`You stopped hearing it around ${fmt(f,"Hz")}. ${f>16000?"Excellent high-frequency hearing.":f>12000?"Typical adult range.":"Try lower volume and a quiet room, or check your speakers. Many laptop speakers roll off early."}`,"good"); BC.once("hearing",10,"hearing test"); return; }
+   stop(); $("#tn-w").value="sine"; $("#tn-f").value=Math.log10(8000); self.run(); if(!start()) return; $("#tn-test").textContent="I can't hear it any more"; $("#tn-play").textContent="■ Stop";
    const t0=performance.now(); sweep={raf:0}; const step=()=>{ if(!sweep) return; const k=Math.min(1,(performance.now()-t0)/18000); const f=8000*Math.pow(22000/8000,k); $("#tn-f").value=Math.log10(f); self.run(); if(k<1) sweep.raf=requestAnimationFrame(step); else { stop(); note("tn-n","You heard all the way to 22 kHz? Either superhuman ears or your speakers are making distortion you can hear.","warn"); } }; sweep.raf=requestAnimationFrame(step);});},
  run(){const f=Math.pow(10,+$("#tn-f").value); this.f=f; out("tn-f",fmt(f,"Hz")); out("tn-v",Math.round(+$("#tn-v").value/0.3*100)+"%");
   setT("tn-fo",fmt(f,"Hz")); setT("tn-T",fmt(1/f,"s")); setT("tn-wl",fmt(343/f,"m"));
@@ -627,7 +634,7 @@ BC.mountHero=function(host){
    <div class="readout"><div class="ro hl"><div class="k">Current</div><div class="v" id="hr-i">—</div></div><div class="ro"><div class="k">Power in resistor</div><div class="v" id="hr-p">—</div></div></div></div></div>`;
   const st={V:9,R:470,I:0,heat:0}; let s=0; const sm=[];
   const run=()=>{st.R=Math.pow(10,+$("#hr-r").value); st.I=st.V/st.R; const P=st.V*st.I; st.heat=P/0.25; out("hr-r",fmt(st.R,"Ω")); setT("hr-i",fmt(st.I,"A")); setT("hr-p",fmt(P,"W")+(P>0.25?" · too hot":""));};
-  host.addEventListener("input",run); run(); host._run=run;
+  host.addEventListener("input",()=>{run(); BC.redraw();}); run(); host._run=run;
   BC.anim(dt=>{const cv=$("#hr-cv"); if(!cv) return; const {g,W,H}=BC.fit(cv);
    const r={x0:50,x1:W-40,y0:42,y1:H-34}, ym=(r.y0+r.y1)/2, xa=W/2-60, xb=W/2+60;
    const speed=clamp((Math.log10(st.I*1e6)+0.5)/6,0.03,1.4)*0.22; s+=speed*dt;
@@ -647,6 +654,7 @@ BC.mountLab=function(key,host,fig){
   d.innerHTML=`<div class="lb">${Lb.html()}</div><figcaption class="lh"><h3>${fig?`<span class="figno">Fig. ${fig}</span>`:""}${Lb.title}</h3><span>${Lb.sub}</span></figcaption>`;
   host.appendChild(d);
   if(Lb.init) Lb.init(d);
-  if(Lb.run){ const go=()=>{ Lb.run(d); }; d.addEventListener("input",()=>{ go(); BC.touchLab(key); }); d.addEventListener("change",go); go(); d._run=go; }
+  if(Lb.run){ const go=()=>{ Lb.run(d); BC.redraw(); }; d.addEventListener("input",()=>{ go(); BC.touchLab(key); }); d.addEventListener("change",go); go(); d._run=go; }
+  d.addEventListener("click",()=>BC.redraw());
 };
 })();
