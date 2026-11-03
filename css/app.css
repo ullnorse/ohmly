@@ -545,3 +545,120 @@ label.btn{cursor:pointer}
 nav.rail .more{display:none}
 @media (max-width:960px){ nav.rail .more{display:block} }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---------- teardown: one real board. The board is a "hardware" surface: dark solder mask in both themes,
+   copper layers in muted, distinct inks, ENIG pads, white silk. ---------- */
+body.tdWide .shell{grid-template-columns:minmax(0,1fr);max-width:none}
+body.tdWide nav.rail:not(.open){display:none}
+body.tdWide .wrap{max-width:1500px;gap:18px}
+body.tdWide main{padding-block:22px 40px}
+.td{--tdSub:#24312B;--tdStage:var(--sunk);--tdF:#C8874A;--tdI1:#A3A35A;--tdI2:#4F9E95;--tdB:#6E8DC4;--tdPad:#D9B45E;--tdSilk:#EEF2EE;--tdEdge:#E3C84B;--tdHi:#FF6A4F;--tdHiPad:#FFD9A0;
+  display:grid;grid-template-columns:240px minmax(0,1fr) 330px;gap:0;height:calc(100vh - 190px);min-height:540px;border:1px solid var(--rule)}
+:root[data-theme="dark"] .td{--tdSub:#18211D}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .td{--tdSub:#18211D} }
+.tdHead h1{font-size:clamp(2.2rem,4.5vw,3rem)}
+.tdHead .lede{max-width:80ch;margin-top:6px;font-size:1rem}
+.tdPane{overflow:auto;min-width:0;padding:12px 14px;font-size:.9rem;background:var(--bg)}
+.tdList{border-right:1px solid var(--line)}
+.tdCard{border-left:1px solid var(--line);display:flex;flex-direction:column;gap:12px;padding:14px 16px}
+.tdCard h2{font-size:1.5rem}
+.tdCard h3{font-size:1rem;letter-spacing:.04em;text-transform:uppercase;border-top:1px solid var(--rule);padding-top:8px;margin-top:4px}
+.tdCard table.spec{font-size:.86rem}
+.tdCard table.spec td{padding:5px 4px;vertical-align:top}
+.tdCard table.spec td:last-child{text-align:right;overflow-wrap:anywhere}
+.tdNetH{font-family:var(--f-mono);font-size:1.3rem;overflow-wrap:anywhere}
+.tdStack tr.die td{color:var(--muted);font-size:.8rem}
+.tdGrp{margin-top:14px}
+.tdGrp h3{font-size:.95rem;letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid var(--rule);padding-bottom:3px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:baseline}
+.tdGrp ul,.tdGrp ol,.tdNets,.tdMem,.tdLearn{list-style:none;margin:0;padding:0}
+.tdItem{display:grid;grid-template-columns:44px minmax(0,1fr);gap:6px;align-items:baseline;width:100%;text-align:left;background:none;border:0;border-left:3px solid transparent;padding:3px 4px 3px 6px;cursor:pointer;line-height:1.3;font-size:.86rem}
+.tdItem .mono{font-size:.75rem;color:var(--muted)}
+.tdItem:hover{background:var(--sunk)}
+.tdItem.on{border-left-color:var(--accent);background:var(--sunk);font-weight:500}
+.tdMem li{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.tdMem .tdItem{width:auto;flex:1 1 160px}
+.tdNets{display:flex;flex-direction:column;gap:3px}
+.tdNet{font-family:var(--f-mono);font-size:.82rem;background:none;border:0;border-bottom:1px solid var(--line);padding:1px 0;cursor:pointer;color:var(--ink);overflow-wrap:anywhere;text-align:left}
+.tdNet:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.tdLearn li{padding:3px 0}
+.tdLearn a.label{margin-left:4px}
+.tdStep{display:flex;gap:8px;justify-content:space-between;margin-top:auto;padding-top:6px}
+.tdStep .btn{padding:6px 12px;font-size:.85rem}
+.tdBoard{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--tdStage)}
+.tdBar{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--line);background:var(--bg);flex-wrap:wrap}
+.tdBar .sp{flex:1}
+.tdBar .iconBtn{font-family:var(--f-mono);font-size:1rem}
+.tdFit{padding:4px 12px;font-size:.85rem;height:32px}
+.tdLayers{display:flex;flex-wrap:wrap;gap:2px 10px}
+.tdTog{display:inline-flex;align-items:center;gap:5px;font-family:var(--f-mono);font-size:.74rem;color:var(--muted);cursor:pointer;white-space:nowrap}
+.tdTog input{margin:0;accent-color:var(--accent)}
+.tdTog i{display:inline-block;width:10px;height:10px}
+.tdTogF i{background:var(--tdF)} .tdTogI1 i{background:var(--tdI1)} .tdTogI2 i{background:var(--tdI2)} .tdTogB i{background:var(--tdB)}
+.tdTogS i{background:var(--tdSilk);border:1px solid var(--line)} .tdTogZ i{background:var(--tdF);opacity:.4} .tdTogR i{border:1px solid var(--muted)}
+.tdStage{position:relative;flex:1;min-height:0;overflow:hidden;touch-action:none;cursor:grab;outline:none}
+.tdStage.grab{cursor:grabbing}
+.tdStage:focus-visible{box-shadow:inset 0 0 0 2px var(--accent)}
+.tdStage svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.tdHover{padding:4px 10px;border-top:1px solid var(--line);background:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.9em}
+.tdLoading{padding:8px 0}
+/* board inks */
+.tdSub{fill:var(--tdSub)}
+.tdEdge{fill:none;stroke:var(--tdEdge);stroke-width:.1}
+.tdL path{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.tdLF{--c:var(--tdF)} .tdLI1{--c:var(--tdI1)} .tdLI2{--c:var(--tdI2)} .tdLB{--c:var(--tdB)}
+.tdL .tdZone{fill:var(--c);opacity:.2;stroke:none}
+.tdL .tdTr{stroke:var(--c)}
+.tdLB,.tdLI2,.tdLI1{opacity:.75}
+.tdL .tdPad,.tdLthru .tdPad{fill:var(--tdPad);stroke:none}
+.tdLB .tdPad{fill:var(--tdB)}
+.noZones .tdZone,.noZones .tdHiZone{display:none}
+.tdOver rect{fill:rgba(140,150,145,.12);stroke:var(--muted);stroke-width:.1;stroke-dasharray:.4 .3}
+.tdAnno{fill:var(--muted);font-family:var(--f-mono);text-anchor:middle;dominant-baseline:middle;letter-spacing:.15em}
+.tdVia{fill:#B9BDB8}
+.tdDrill{fill:#0B0F0D}
+.tdSilkL{fill:none;stroke:var(--tdSilk);stroke-width:.12;stroke-linecap:round;opacity:.85}
+.tdSilkT text{fill:var(--tdSilk);font-family:var(--f-mono);text-anchor:middle;dominant-baseline:middle;opacity:.9}
+.tdRefs text{fill:#fff;font-family:var(--f-mono);text-anchor:middle;paint-order:stroke;stroke:#000;stroke-width:.06;opacity:.85}
+.tdShade{fill:var(--tdSub);opacity:.72}
+.tdHiL{opacity:1}
+.tdHiL path{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.tdHiL .tdHiTr{stroke:var(--tdHi)}
+.tdHiL .tdHiZone{fill:var(--tdHi);opacity:.22;stroke:none}
+.tdHiPad{fill:var(--tdHiPad)}
+.tdHiPart{fill:var(--tdHiPad)}
+.tdHiBox{fill:rgba(255,106,79,.10);stroke:var(--tdHi);stroke-width:2}
+.tdHiBox.assy{fill:none;stroke-dasharray:6 4}
+/* design-note pins: HTML buttons laid over the board so they stay one size at any zoom */
+.tdPins{position:absolute;left:0;top:0;width:0;height:0}
+.tdPin{position:absolute;left:-12px;top:-12px;width:24px;height:24px;border-radius:50%;border:2px solid #fff;background:var(--accent);color:#fff;font-family:var(--f-mono);font-size:.78rem;font-weight:600;display:grid;place-items:center;padding:0;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.45)}
+.tdPin:hover,.tdPin.on{background:#fff;color:var(--accent);border-color:var(--accent)}
+.tdPin:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.tdTabs{display:none}
+.tdCredit{margin-top:4px}
+@media (max-width:1180px){
+  .td{grid-template-columns:210px minmax(0,1fr) 290px}
+}
+@media (max-width:980px) and (min-width:761px){
+  .td{grid-template-columns:200px minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;height:auto}
+  .tdList{grid-row:1/3;max-height:calc(100vh - 160px)}
+  .tdBoard{height:62vh;min-height:420px}
+  .tdCard{border-left:0;border-top:1px solid var(--line)}
+}
+@media (max-width:760px){
+  body.tdWide main{padding-block:14px 30px}
+  .tdHead .lede{font-size:1rem}
+  .td{display:block;height:auto;min-height:0;border:0}
+  .tdBoard{height:min(64vh,560px);min-height:340px;border:1px solid var(--rule)}
+  .tdBar{gap:4px}
+  .tdLayers{gap:2px 8px}
+  .tdPane{position:fixed;left:0;right:0;bottom:0;z-index:7;max-height:58vh;border:0;border-top:2px solid var(--rule);
+    padding:12px max(16px,env(safe-area-inset-left,0px)) calc(70px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-right,0px));
+    box-shadow:0 -6px 24px rgba(0,0,0,.18);transform:translateY(105%);transition:transform .2s;visibility:hidden}
+  .td[data-sheet="list"] .tdList,.td[data-sheet="card"] .tdCard{transform:none;visibility:visible}
+  .tdTabs{display:flex;gap:8px;position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--bg);border-top:1px solid var(--line);
+    padding:8px max(16px,env(safe-area-inset-left,0px)) calc(8px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-right,0px))}
+  .tdTabs .btn{flex:1;padding:8px 10px}
+  .tdTabs .btn[aria-expanded="true"]{background:var(--ink);color:var(--bg)}
+  .tdCredit{margin-bottom:56px}
+  body.tdWide footer.site{margin-bottom:76px}
+}

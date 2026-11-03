@@ -44,7 +44,7 @@ function rail(cur){
      M.filter(c=>c.part===p).map(c=>{const done=S.done[c.n], n=answeredIn(c);
        return `<a href="#m-${c.n}" class="${cur===c.n?"on":""}"${cur===c.n?' aria-current="page"':""}><span class="n">${pad(c.n)}</span><span>${esc(c.title)}</span><span class="st ${done?"done":""}">${done?"✓":n?"·":""}</span></a>`;}).join("");
   });
-  html+=`<div class="more"><div class="grp">More</div>${[["reference","Reference"],["practice","Practice"],["log","Logbook · Lv "+(BC.level(S.xp).i+1)]].map(([k,t])=>`<a href="#${k}" class="${navKey()===k?"on":""}"><span class="n">›</span><span>${esc(t)}</span><span class="st"></span></a>`).join("")}</div>`;
+  html+=`<div class="more"><div class="grp">More</div>${[["teardown","Teardown"],["reference","Reference"],["practice","Practice"],["log","Logbook · Lv "+(BC.level(S.xp).i+1)]].map(([k,t])=>`<a href="#${k}" class="${navKey()===k?"on":""}"><span class="n">›</span><span>${esc(t)}</span><span class="st"></span></a>`).join("")}</div>`;
   $("#rail").innerHTML=html;
 }
 
@@ -272,6 +272,7 @@ function render(){
   } else if((m=/^game-(\w+)$/.exec(h)) && BC.GAMES[m[1]]){
     currentKey="game"; v.innerHTML=gameView(m[1]); BC.GAMES[m[1]].mount($("#gameHost")); title=`${BC.GAMES[m[1]].title} · Ohmly`;
   } else if(h==="arcade"){ currentKey="arcade"; v.innerHTML=arcade(); title="Arcade · Ohmly"; }
+  else if((m=/^teardown(?:\/(.+))?$/.exec(h))){ currentKey="teardown"; v.innerHTML=BC.TD.page(); title="Teardown · Ohmly"; BC.TD.mount(m[1]); }
   else if(h==="reference"){ currentKey="reference"; v.innerHTML=reference(); title="Reference · Ohmly"; }
   else if(h==="practice"){ currentKey="practice"; v.innerHTML=practice(); title="Practice · Ohmly"; mountDrill(); }
   else if(h==="log"){ currentKey="log"; v.innerHTML=logbook(); title="Logbook · Ohmly"; }
@@ -291,7 +292,7 @@ function render(){
     $("#resetYes").addEventListener("click",()=>{const keep={sound:S.sound,theme:S.theme}; if(S.pxmm) keep.pxmm=S.pxmm; Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,BC.defaults(),keep); BC.save(); render(); $("#impMsg").className="note good"; $("#impMsg").textContent="All progress erased.";});
   } else if(h==="home"||h==="view"){ currentKey="home"; v.innerHTML=home(); title="Ohmly · An interactive platform for learning electronics"; BC.mountHero($("#heroHost")); }
   else { currentKey="404"; v.innerHTML=`<header class="stack"><h1 tabindex="-1">Not found</h1><p class="lede muted">There is nothing at this address. <a href="#home">Back to the contents</a>.</p></header>`; title="Not found · Ohmly"; }
-  document.title=title; rail(currentKey); header(); window.scrollTo(0,0);
+  document.title=title; document.body.classList.toggle("tdWide",currentKey==="teardown"); rail(currentKey); header(); window.scrollTo(0,0);
   const lt=lab&&$("#lab-"+lab);
   if(lt){ lt.scrollIntoView({behavior:"auto",block:"start"}); lt.setAttribute("tabindex","-1"); lt.focus({preventScroll:true}); }
   else { const h1=$("#view h1"); if(h1&&routed) h1.focus({preventScroll:true}); }
