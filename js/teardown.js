@@ -436,7 +436,8 @@ function clickAt(x,y){ const h=hit(x,y);
 
 /* ---------- events ---------- */
 function sheet(which){ const td=$("#td"); if(!td) return; st.sheet=which||null; td.dataset.sheet=which||"";
-  $$(".tdTabs [data-sheet]").forEach(b=>b.setAttribute("aria-expanded",b.dataset.sheet===which)); }
+  $$(".tdTabs [data-sheet]").forEach(b=>b.setAttribute("aria-expanded",b.dataset.sheet===which));
+  if(which&&matchMedia("(max-width:760px)").matches) $(".tdBoard")?.scrollIntoView({block:"start"}); }
 function bind(host){
   host.addEventListener("click",e=>{
     const t=e.target.closest("button,input"); if(!t) return;
