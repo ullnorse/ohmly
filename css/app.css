@@ -121,6 +121,7 @@ table.toc td.labs,table.toc td.stat{font-family:var(--f-mono);font-size:.8rem;co
 table.toc td.stat.done{color:var(--accent)}
 table.toc tr:hover td{background:var(--sunk)}
 .logline{font-size:.92rem;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+footer.site{max-width:1240px;margin:0 auto 28px;width:calc(100% - 40px)}
 .colophon{border-top:2px solid var(--rule);padding-top:10px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-family:var(--f-mono);font-size:.75rem;color:var(--muted)}
 
 /* ---------- logbook ---------- */
@@ -192,6 +193,44 @@ ul.ideas li::before{content:"";width:6px;height:6px;margin-top:.62em;background:
 .pager a{text-decoration:none;max-width:48%;font-weight:500}
 .pager a.r{text-align:right;margin-left:auto}
 .pager a span{display:block;font-family:var(--f-mono);font-weight:400;font-size:.75rem;color:var(--muted)}
+
+/* ---------- worked examples, steps, practice problems, going deeper ---------- */
+.ex{border-top:1px solid var(--line);padding:16px 0;max-width:80ch}
+.ex:first-of-type{border-top:0;padding-top:0}
+.exq{font-weight:500}
+.exq .label,.exa .label,.ph .label{display:block;margin-bottom:2px}
+ol.steps{list-style:none;counter-reset:st;margin:12px 0 0;padding:0;border-top:1px solid var(--rule)}
+ol.steps li{counter-increment:st;display:grid;grid-template-columns:28px minmax(0,1fr);gap:6px;padding:7px 0;border-bottom:1px solid var(--line);font-size:.95rem;overflow-wrap:anywhere}
+ol.steps li::before{content:counter(st);font-family:var(--f-mono);font-size:.78rem;color:var(--muted);padding-top:.15em}
+.exa{margin-top:10px;font-weight:500;color:var(--accent)}
+.exa .label{color:var(--muted);font-weight:400}
+.prob{border-top:1px solid var(--line);padding:16px 0;max-width:80ch}
+.prob:first-child{border-top:0;padding-top:0}
+.ph{display:flex;justify-content:space-between;gap:12px}
+.ph .label{margin:0}
+.ph .ok{font-family:var(--f-mono);font-size:.76rem;color:var(--accent);visibility:hidden}
+.ph .ok.on{visibility:visible}
+.pq{font-weight:500;margin:4px 0 12px}
+.pin{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.pin .ctrl{flex:1 1 170px;max-width:240px}
+.pin input{font-family:var(--f-mono)}
+.pin .btn{padding:8px 14px}
+.pres{margin-top:12px;font-size:.95rem}
+.pres .good{color:var(--good)} .pres .bad,.pres p.bad{color:var(--bad)}
+.pres .btn{margin-top:14px}
+.drillSel{max-width:320px;margin-bottom:16px}
+details.dd{border-top:1px solid var(--line);max-width:80ch}
+details.dd:last-of-type{border-bottom:1px solid var(--line)}
+details.dd summary{cursor:pointer;list-style:none;padding:11px 28px 11px 0;position:relative;font-weight:500}
+details.dd summary::-webkit-details-marker{display:none}
+details.dd summary::after{content:"+";position:absolute;right:4px;top:9px;font-family:var(--f-mono);color:var(--accent);width:1ch;text-align:center}
+details.dd[open] summary::after{content:"−"}
+details.dd summary:hover{color:var(--accent)}
+.ddb{padding:2px 0 18px;display:flex;flex-direction:column;gap:12px;font-size:.95rem}
+.dform{border-left:3px solid var(--accent);padding:2px 0 2px 14px;font-family:var(--f-mono);font-size:.92rem;overflow-x:auto}
+.dform div{white-space:nowrap}
+.gameRow.idx{grid-template-columns:44px minmax(0,1fr) auto;gap:14px}
+.gameRow.idx .no{font-family:var(--f-mono);font-size:.85rem;color:var(--muted)}
 
 /* ---------- labs (figures) ---------- */
 .lab{border:1px solid var(--rule);background:var(--surface);scroll-margin-top:70px}
@@ -385,6 +424,8 @@ label.btn{cursor:pointer}
   .formulas{grid-template-columns:minmax(0,1fr)}
   .gameRow{grid-template-columns:70px minmax(0,1fr)}
   .gameRow .best{grid-column:2;text-align:left}
+  .gameRow.idx{grid-template-columns:30px minmax(0,1fr)}
+  .gameRow.idx .best{grid-column:2}
   .meterGrid{grid-template-columns:1fr}
   .adRow{grid-template-columns:40px repeat(5,minmax(0,1fr)) 40px;gap:5px}
   .lcd{font-size:1.5rem}

@@ -23,8 +23,10 @@ function header(){
   sb.innerHTML=`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/>${S.sound?'<path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>':'<path d="M17 9l5 6M22 9l-5 6"/>'}</svg>`;
   const tb=$("#themeBtn"), t=S.theme||"system"; tb.title="Theme: "+t; tb.setAttribute("aria-label","Theme: "+t+". Click to change.");
   tb.innerHTML=t==="dark"?'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>':t==="light"?'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/></svg>':'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>';
-  $$(".topnav a").forEach(a=>{ const k=a.getAttribute("href").slice(1); if(k===currentKey||(k==="arcade"&&currentKey==="game")) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
+  const nk=navKey(); $$(".topnav a").forEach(a=>{ if(a.getAttribute("href").slice(1)===nk) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
 }
+/* which top-menu entry a view belongs to */
+const navKey=()=>typeof currentKey==="number"||currentKey==="home"?"home":currentKey==="formulas"?"reference":currentKey==="arcade"||currentKey==="game"?"practice":currentKey;
 BC.onXP=()=>{header(); rail(currentKey);};
 
 /* ---------- rail ---------- */
@@ -36,7 +38,7 @@ function rail(cur){
      M.filter(c=>c.part===p).map(c=>{const done=S.done[c.n], n=answeredIn(c);
        return `<a href="#m-${c.n}" class="${cur===c.n?"on":""}"${cur===c.n?' aria-current="page"':""}><span class="n">${pad(c.n)}</span><span>${esc(c.title)}</span><span class="st ${done?"done":""}">${done?"✓":n?"·":""}</span></a>`;}).join("");
   });
-  html+=`<div class="more"><div class="grp">More</div>${[["arcade","Arcade"],["formulas","Formula sheet"],["log","Logbook · Lv "+(BC.level(S.xp).i+1)],["about","About and settings"]].map(([k,t])=>`<a href="#${k}" class="${cur===k||(k==="arcade"&&cur==="game")?"on":""}"><span class="n">›</span><span>${esc(t)}</span><span class="st"></span></a>`).join("")}</div>`;
+  html+=`<div class="more"><div class="grp">More</div>${[["reference","Reference"],["practice","Practice"],["log","Logbook · Lv "+(BC.level(S.xp).i+1)]].map(([k,t])=>`<a href="#${k}" class="${navKey()===k?"on":""}"><span class="n">›</span><span>${esc(t)}</span><span class="st"></span></a>`).join("")}</div>`;
   $("#rail").innerHTML=html;
 }
 
@@ -73,7 +75,7 @@ function home(){
   <header class="mast">
     <h1 tabindex="-1">Electronics, learned at the bench.</h1>
     <p class="lede">Seventeen short modules. Each one explains an idea in plain language, then gives you a working circuit to change so you can see what happens. Free, in the browser, nothing to install.</p>
-    <div class="mastActions"><a class="btn primary big" href="#m-${next.n}">${started?`Continue with module ${next.n}`:"Start with module 1"} →</a><a class="text" href="#arcade">or go straight to the arcade</a></div>
+    <div class="mastActions"><a class="btn primary big" href="#m-${next.n}">${started?`Continue with module ${next.n}`:"Start with module 1"} →</a><a class="text" href="#practice">or go straight to practice</a></div>
   </header>
   <figure class="fig" id="fig1"><div id="heroHost"></div>
     <figcaption><b>Fig. 1</b>A 9 V battery and one resistor. Drag the slider: the dots are current, and the resistor heats up as the power rises. Module 1 explains why.</figcaption></figure>
@@ -85,7 +87,7 @@ function home(){
         return `<tr><td class="no">${pad(c.n)}</td><td class="t"><a href="#m-${c.n}">${esc(c.title)}</a><span>${esc(c.blurb)}</span></td><td class="labs">${c.labs.length}</td><td class="stat ${done?"done":""}">${done?"done":n?`${n}/${c.quiz.length}`:"—"}</td></tr>`;}).join("")}
       </tbody></table></div>`).join("")}
   </section>
-  <footer class="colophon"><span>Ohmly · Rev 1.0</span><span>Independent. Free. No accounts, no tracking.</span><a href="#about">About and settings</a></footer>`;
+  `;
 }
 
 /* ---------- logbook ---------- */
@@ -119,21 +121,27 @@ function moduleView(c){
   <header class="modHead">
     <div class="modNo" aria-hidden="true">${pad(c.n)}</div>
     <div><p class="partName">Module ${c.n} · Part ${c.part}, ${esc(partOf(c).name)}</p><h1 tabindex="-1">${esc(c.title)}</h1></div>
-    <div class="modMeta"><span>${c.labs.length} lab${c.labs.length===1?"":"s"}</span><span>${c.quiz.length} questions</span><span class="sp"></span>
+    <div class="modMeta"><span>${c.labs.length} lab${c.labs.length===1?"":"s"}</span>${BC.probCount(c.n)?`<span>${BC.probCount(c.n)} problems</span>`:""}<span>${c.quiz.length} questions</span><span class="sp"></span>
     <button class="btn ${S.done[c.n]?"":"primary"}" id="doneBtn" type="button" aria-pressed="${!!S.done[c.n]}">${S.done[c.n]?"✓ Finished":"Mark as finished"}</button></div>
   </header>
   <section class="prose"><p class="lede">${esc(c.big)}</p></section>
-  ${c.tip?`<p class="tip"><b>Note</b>${esc(c.tip)}</p>`:""}
   <section><div class="sectionHead"><h2>Key points</h2></div><ul class="ideas">${c.ideas.map(i=>`<li><span>${esc(i)}</span></li>`).join("")}</ul></section>
   ${c.formulas.length?`<section><div class="sectionHead spread"><h2>Formulas</h2><a class="label" href="#game-cards">practice as flashcards</a></div><div class="formulas">${c.formulas.map(f=>`<div class="formula"><div class="eq">${esc(f[0])}</div><div class="what">${esc(f[1])}</div></div>`).join("")}</div></section>`:""}
+  ${(c.ex||[]).length?`<section id="ex"><div class="sectionHead"><h2>Worked examples</h2></div>${c.ex.map((e,i)=>`<div class="ex"><p class="exq"><span class="label">Example ${c.n}.${i+1}</span>${esc(e.q)}</p><ol class="steps">${e.steps.map(t=>`<li>${esc(t)}</li>`).join("")}</ol><p class="exa"><span class="label">Answer</span>${esc(e.ans)}</p></div>`).join("")}</section>`:""}
   ${c.labs.length?`<section><div class="sectionHead"><h2>Labs</h2></div>${c.labs.length>1?`<nav class="labNav" aria-label="Labs in this module">${c.labs.map((k,i)=>`<a href="#lab-${k}" class="labJump">Fig. ${c.n}.${i+1} ${esc(BC.LABS[k].title)}</a>`).join("")}</nav>`:""}<div id="labs"></div></section>`:""}
+  ${BC.probCount(c.n)?`<section id="probs"><div class="sectionHead spread"><h2>Practice problems</h2><span class="label">new numbers each time · 4.7k, 15m, 2.2u</span></div><div id="probList"></div></section>`:""}
   <section id="quiz"><div class="sectionHead spread"><h2>Check</h2><span class="score" id="score" aria-live="polite">${right} of ${c.quiz.length} right</span></div>
     ${c.quiz.map((q,i)=>quizItem(c,q,i)).join("")}
     ${answeredIn(c)?`<button class="btn" id="resetQuiz" type="button">Clear answers</button>`:""}
   </section>
+  ${(c.deep||[]).length?`<section id="deep"><div class="sectionHead spread"><h2>Going deeper</h2><span class="label">optional · not needed to finish the module</span></div>${c.deep.map(d=>`<details class="dd"><summary>${esc(d.t)}</summary><div class="ddb">${deepBody(d.body)}</div></details>`).join("")}</section>`:""}
+  ${c.tip?`<p class="tip"><b>Note</b>${esc(c.tip)}</p>`:""}
   ${c.reading?`<p class="reading">Further reading: <i>${esc(D.BOOK.title)}</i>, ${esc(D.BOOK.ed)}, ${esc(c.reading)}. Ohmly isn't affiliated with the book or its publisher.</p>`:""}
   <nav class="pager" aria-label="Module navigation">${prev?`<a href="#m-${prev.n}"><span>← ${pad(prev.n)}</span>${esc(prev.title)}</a>`:`<a href="#home"><span>←</span>Contents</a>`}${next?`<a href="#m-${next.n}" class="r"><span>${pad(next.n)} →</span>${esc(next.title)}</a>`:`<a href="#arcade" class="r"><span>→</span>Arcade</a>`}</nav>`;
 }
+/* deep body: blocks split by a blank line; "= " lines are formulas, "- " lines a list, anything else a paragraph */
+function deepBody(b){ return b.split("\n\n").map(k=>{ const ln=k.split("\n");
+  return ln.every(x=>x.startsWith("= "))?`<div class="dform">${ln.map(x=>`<div>${esc(x.slice(2))}</div>`).join("")}</div>`:ln.every(x=>x.startsWith("- "))?`<ul class="ideas">${ln.map(x=>`<li><span>${esc(x.slice(2))}</span></li>`).join("")}</ul>`:`<p>${esc(k)}</p>`; }).join(""); }
 let qperm=[]; // shuffled option order per question, fresh each render; stored answers use the original index
 function quizItem(c,q,i){
   const qs=S.quiz[c.n]||{}, st=qs[i], ans=qs["p"+i];
@@ -144,15 +152,40 @@ function quizItem(c,q,i){
 }
 
 /* ---------- arcade ---------- */
+const gameList=()=>`<div class="gameList">${Object.entries(BC.GAMES).map(([id,g])=>`<a class="gameRow" href="#game-${id}"><div class="art">${g.art}</div><div><h3>${esc(g.title)}</h3><p>${esc(g.desc)}</p></div><span class="best">${S.hi[id]!==undefined?"best "+S.hi[id]:esc(g.tag)}</span></a>`).join("")}</div>`;
 function arcade(){
-  return `<header><h1 tabindex="-1">Arcade</h1><p class="lede muted" style="margin-top:12px">Short games for the skills you use most at the bench. Each one takes a few minutes.</p></header>
-  <div class="gameList">${Object.entries(BC.GAMES).map(([id,g])=>`<a class="gameRow" href="#game-${id}"><div class="art">${g.art}</div><div><h3>${esc(g.title)}</h3><p>${esc(g.desc)}</p></div><span class="best">${S.hi[id]!==undefined?"best "+S.hi[id]:esc(g.tag)}</span></a>`).join("")}</div>`;
+  return `<header class="stack"><a class="back" href="#practice">← Practice</a><h1 tabindex="-1">Arcade</h1><p class="lede muted">Short games for the skills you use most at the bench. Each one takes a few minutes.</p></header>${gameList()}`;
 }
-function gameView(id){const g=BC.GAMES[id]; return `<header class="stack"><a class="back" href="#arcade">← Arcade</a><h1 tabindex="-1">${esc(g.title)}</h1><p class="lede muted">${esc(g.desc)}</p></header><div id="gameHost"></div>`;}
+
+/* ---------- reference index: add an entry here for each new reference section ---------- */
+function reference(){
+  const nf=M.reduce((s,c)=>s+c.formulas.length,0);
+  const idx=[["formulas","Formulas","Every formula in the course, grouped by module, with a filter.",`${nf} formulas`]];
+  return `<header class="stack"><h1 tabindex="-1">Reference</h1><p class="lede muted">Sheets and tables to look things up in.</p></header>
+  <section><div class="sectionHead"><h2>Index</h2></div><div class="gameList">${idx.map(([k,t,d,n],i)=>`<a class="gameRow idx" href="#${k}"><span class="no">${pad(i+1)}</span><div><h3>${esc(t)}</h3><p>${esc(d)}</p></div><span class="best">${esc(n)}</span></a>`).join("")}</div></section>`;
+}
+
+/* ---------- practice: mixed drill + arcade ---------- */
+function practice(){
+  const parts=BC.probParts();
+  return `<header class="stack"><h1 tabindex="-1">Practice</h1><p class="lede muted">Problems with fresh numbers every time, then games for speed.</p></header>
+  <section id="drill"><div class="sectionHead spread"><h2>Problems</h2><span class="label">each problem pays XP once · 4.7k, 15m, 2.2u</span></div>
+   <div class="ctrl drillSel"><label for="drillPart"><span>Draw from</span></label><select id="drillPart"><option value="">All parts</option>${parts.map(p=>`<option value="${p}">Part ${p}, ${esc(D.PARTS[p].name)}</option>`).join("")}</select></div>
+   <div id="drillHost"></div></section>
+  <section><div class="sectionHead"><h2>Arcade</h2></div>${gameList()}</section>`;
+}
+function mountDrill(){
+  const sel=$("#drillPart"); let last="";
+  const draw=()=>{ const pool=BC.probPool(sel.value), alt=pool.filter(x=>x.join("-")!==last), [n,i]=BC.pick(alt.length?alt:pool); last=n+"-"+i; return {n,i,label:`Module ${n} · Problem ${n}.${i+1}`}; };
+  const show=()=>BC.probMount($("#drillHost"),[draw()],draw);
+  sel.addEventListener("change",show); show();
+}
+
+function gameView(id){const g=BC.GAMES[id]; return `<header class="stack"><a class="back" href="#practice">← Practice</a><h1 tabindex="-1">${esc(g.title)}</h1><p class="lede muted">${esc(g.desc)}</p></header><div id="gameHost"></div>`;}
 
 /* ---------- formulas ---------- */
 function formulas(){
-  return `<header class="stack"><h1 tabindex="-1">Formula sheet</h1><p class="lede muted">Every formula in the course, by module.</p>
+  return `<header class="stack"><a class="back" href="#reference">← Reference</a><h1 tabindex="-1">Formula sheet</h1><p class="lede muted">Every formula in the course, by module.</p>
   <div class="ctrl" style="max-width:420px"><label for="fsearch"><span>Filter</span></label><input type="search" id="fsearch" placeholder="power, 555, filter, dB…" autocomplete="off"></div></header>
   <div id="flist">${M.filter(c=>c.formulas.length).map(c=>`<section class="fgroup"><div class="sectionHead spread"><h3>${pad(c.n)} ${esc(c.title)}</h3><a class="label" href="#m-${c.n}">open module</a></div><div class="formulas">${c.formulas.map(f=>`<div class="formula" data-k="${esc((f[0]+" "+f[1]+" "+c.title).toLowerCase())}"><div class="eq">${esc(f[0])}</div><div class="what">${esc(f[1])}</div></div>`).join("")}</div></section>`).join("")}</div>
   <p class="muted" id="fnone" hidden>Nothing matches that.</p>`;
@@ -210,6 +243,7 @@ function render(){
   if(cm){
     const c=cm; currentKey=c.n; S.lastCh=c.n; BC.save(); v.innerHTML=moduleView(c); title=`${pad(c.n)} ${c.title} · Ohmly`;
     if(c.labs.length){const host=$("#labs"); c.labs.forEach((k,i)=>BC.mountLab(k,host,`${c.n}.${i+1}`));}
+    if(BC.probCount(c.n)) BC.probMount($("#probList"),Array.from({length:BC.probCount(c.n)},(_,i)=>({n:c.n,i,label:`Problem ${c.n}.${i+1}`})));
     $$(".labJump").forEach(a=>a.addEventListener("click",e=>{e.preventDefault(); const t=$(a.getAttribute("href")); if(t){t.scrollIntoView({behavior:BC.reduced?"auto":"smooth",block:"start"}); t.setAttribute("tabindex","-1"); t.focus({preventScroll:true});}}));
     $("#doneBtn").addEventListener("click",e=>{const was=!!S.done[c.n]; S.done[c.n]=!was; BC.save(); const b=e.currentTarget;
       b.classList.toggle("primary",was); b.setAttribute("aria-pressed",!was); b.textContent=!was?"✓ Finished":"Mark as finished";
@@ -232,6 +266,8 @@ function render(){
   } else if((m=/^game-(\w+)$/.exec(h)) && BC.GAMES[m[1]]){
     currentKey="game"; v.innerHTML=gameView(m[1]); BC.GAMES[m[1]].mount($("#gameHost")); title=`${BC.GAMES[m[1]].title} · Ohmly`;
   } else if(h==="arcade"){ currentKey="arcade"; v.innerHTML=arcade(); title="Arcade · Ohmly"; }
+  else if(h==="reference"){ currentKey="reference"; v.innerHTML=reference(); title="Reference · Ohmly"; }
+  else if(h==="practice"){ currentKey="practice"; v.innerHTML=practice(); title="Practice · Ohmly"; mountDrill(); }
   else if(h==="log"){ currentKey="log"; v.innerHTML=logbook(); title="Logbook · Ohmly"; }
   else if(h==="formulas"){ currentKey="formulas"; v.innerHTML=formulas(); title="Formula sheet · Ohmly";
     $("#fsearch").addEventListener("input",e=>{const q=e.target.value.trim().toLowerCase(); $$(".formula[data-k]").forEach(f=>f.hidden=!!q&&!f.dataset.k.includes(q)); let any=false; $$(".fgroup").forEach(g=>{const vis=$$(".formula",g).some(f=>!f.hidden); g.hidden=!vis; any=any||vis;}); $("#fnone").hidden=any;});
