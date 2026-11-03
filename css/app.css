@@ -227,6 +227,7 @@ details.dd summary::after{content:"+";position:absolute;right:4px;top:9px;font-f
 details.dd[open] summary::after{content:"−"}
 details.dd summary:hover{color:var(--accent)}
 .ddb{padding:2px 0 18px;display:flex;flex-direction:column;gap:12px;font-size:.95rem}
+.ddb .ideas li>span{min-width:0;overflow-wrap:anywhere}
 .dform{border-left:3px solid var(--accent);padding:2px 0 2px 14px;font-family:var(--f-mono);font-size:.92rem;overflow-x:auto}
 .dform div{white-space:nowrap}
 .gameRow.idx{grid-template-columns:44px minmax(0,1fr) auto;gap:14px}
@@ -407,6 +408,68 @@ label.btn{cursor:pointer}
 .toast.out{opacity:0;transform:translateY(8px)}
 @keyframes tin{from{opacity:0;transform:translateY(10px)}}
 #fx{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:40}
+
+/* schematic labs (SVG): ink wires, one red accent for the selected net or the found mistake */
+.schWrap{grid-column:1/-1;overflow-x:auto;border:1px solid var(--line);background:var(--bg)}
+.sch{display:block;width:100%;min-width:560px;height:auto;font-family:var(--f-mono);-webkit-user-select:none;user-select:none}
+.sch.mz{min-width:340px;max-width:720px;margin:0 auto}
+.sch .wire,.sch .lead{fill:none;stroke:var(--ink);stroke-width:1.5;stroke-linecap:square}
+.sch .body{fill:none;stroke:var(--ink);stroke-width:1.5;stroke-linejoin:miter}
+.sch .body.thin{stroke-width:1}
+.sch .fillb{fill:var(--ink);stroke:none}
+.sch .ncx{stroke:var(--ink);stroke-width:1.3}
+.sch .jn{fill:var(--ink)}
+.sch text{fill:var(--ink);font-size:9px}
+.sch text.ref{font-size:9.5px;font-weight:600}
+.sch text.val,.sch text.pn{fill:var(--muted);font-size:8px}
+.sch text.pn2{font-size:8px}
+.sch text.pl,.sch text.nl{font-size:9px;font-weight:600}
+.sch .hit,.sch .hitb{fill:transparent;stroke:none}
+.sch .hitw{fill:none;stroke:transparent;stroke-width:9;cursor:pointer}
+.sch .pin,.sch .tg{cursor:pointer;outline:none}
+.sch .pin:focus-visible .hit,.sch .tg:focus-visible .hitb{stroke:var(--accent);stroke-width:1.2;stroke-dasharray:3 2}
+.sch .on.wire,.sch .on .wire,.sch .pin.on .lead,.sch .on .ncx{stroke:var(--accent);stroke-width:2.6}
+.sch .jn.on{fill:var(--accent)} .sch text.on{fill:var(--accent)} .sch .on text{fill:var(--accent)}
+.sch .tg:hover .hitb{fill:var(--accent-soft)}
+.sch .tg.ok .body,.sch .tg.ok .wire,.sch .tg.ok .lead{stroke:var(--accent);stroke-width:2.4}
+.sch .tg.ok .fillb,.sch .tg.ok .jn{fill:var(--accent)} .sch .tg.ok text{fill:var(--accent)}
+.sch .tg.miss text.ref{text-decoration:line-through}
+.ro.wide{grid-column:1/-1;min-width:0}
+.ro .v.sm{font-size:.82rem;overflow-wrap:anywhere;min-width:0}
+.mzTask{font-size:.9rem}
+/* true-size lab: the package itself is ink; pads are the accent */
+.pkgPick{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch}
+.pkgPick button{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;min-width:52px;min-height:52px;padding:6px 6px 4px;border:1px solid var(--line);background:transparent;cursor:pointer;font-family:var(--f-mono);font-size:.7rem;color:var(--ink)}
+.pkgPick button:hover{border-color:var(--ink)}
+.pkgPick button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.pkgPick svg,.tsTrue svg{overflow:visible;flex:none}
+.pkb{fill:var(--ink)} .pkl{fill:var(--muted)}
+.cal summary{cursor:pointer;font-size:.88rem}
+.cal[open] summary{margin-bottom:6px}
+.cal > * + *{margin-top:10px}
+.cardBox{overflow:hidden}
+.cardBox svg{display:block}
+.card{fill:none;stroke:var(--accent);stroke-width:.35}
+.rt{fill:var(--muted);font-family:var(--f-mono);font-size:2.4px}
+.tick{stroke:var(--ink);stroke-width:.15;fill:none}
+.tsTrue{grid-column:1/-1;border-top:1px solid var(--rule);padding-top:8px;min-width:0;overflow:hidden}
+.tsTrue svg{display:block;margin-top:6px}
+.tsBig{grid-column:1/-1;border:1px solid var(--line);background:var(--bg);padding:8px}
+.tsBig svg{display:block;width:100%;height:260px}
+.tsBig .pad{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2;vector-effect:non-scaling-stroke}
+.tsBig .hole{fill:var(--bg);stroke:var(--accent);stroke-width:1;vector-effect:non-scaling-stroke}
+.tsBig .pbo{fill:none;stroke:var(--ink);stroke-width:1.6;vector-effect:non-scaling-stroke}
+.tsBig .plo{fill:var(--muted);fill-opacity:.55;stroke:none}
+.tsBig .plh{fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:2 2;vector-effect:non-scaling-stroke}
+.tsBig .crt{fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:5 3;vector-effect:non-scaling-stroke}
+.tsBig .p1{fill:var(--ink)}
+.tsBig .dl{fill:none;stroke:var(--muted);stroke-width:1;vector-effect:non-scaling-stroke}
+.tsBig .dl.acc{stroke:var(--accent)}
+.tsBig .dim{fill:var(--ink);font-family:var(--f-mono)}
+.tsKey{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin-top:6px}
+.tsKey i{display:inline-block;width:14px;height:9px;margin-right:5px;vertical-align:-1px}
+.tsKey .kp{background:var(--accent-soft);border:1px solid var(--accent)} .tsKey .kb{border:1.5px solid var(--ink)} .tsKey .kc{border:1px dashed var(--muted)} .tsKey .k1{width:8px;height:8px;border-radius:50%;background:var(--ink)}
+@media (max-width:640px){ .tsBig svg{height:210px} }
 
 @media (max-width:960px){
   .shell{grid-template-columns:minmax(0,1fr)}

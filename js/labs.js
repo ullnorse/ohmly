@@ -627,6 +627,335 @@ L.adder={title:"4-bit ripple-carry adder",sub:"XOR and AND doing arithmetic",htm
   root.addEventListener("click",e=>{const b=e.target.closest("button"); if(!b) return; st[b.dataset.r]^=(1<<+b.dataset.b); BC.beep("click"); BC.touchLab("adder"); draw();});
   draw();}};
 
+/* ================= CH18-20: schematics and packages ================= */
+/* SVG schematic kit. Parts return {s: body markup, p: pins [{x,y,bx,by,k,nm}]}; (x,y) is the connection point,
+   (bx,by) the body end of the lead. lead() draws a pin's lead; nets are attached by the caller. */
+const SK={
+  w:(pts,a="")=>`<polyline class="wire"${a} points="${pts.map(p=>p.join(",")).join(" ")}"/>`,
+  t:(x,y,s,c="",anc="start")=>`<text x="${x}" y="${y}" class="${c}" text-anchor="${anc}">${esc(s)}</text>`,
+  jn:(x,y,a="")=>`<circle class="jn"${a} cx="${x}" cy="${y}" r="2.6"/>`,
+  nc:(x,y)=>`<path class="ncx" d="M${x-4} ${y-4}l8 8M${x+4} ${y-4}l-8 8"/>`,
+  lead:(p,a="")=>`<line class="lead"${a} x1="${p.bx}" y1="${p.by}" x2="${p.x}" y2="${p.y}"/>`,
+  pwr:(x,y,n,a="")=>`<g class="sym"${a}><path class="wire" d="M${x} ${y}v-10M${x-6} ${y-10}h12"/><text x="${x}" y="${y-14}" text-anchor="middle" class="pl">${esc(n)}</text></g>`,
+  gnd:(x,y,a="")=>`<g class="sym"${a}><path class="wire" d="M${x} ${y}v5M${x-8} ${y+5}h16M${x-5} ${y+9}h10M${x-2} ${y+13}h4"/></g>`,
+  lbl:(x,y,s,anc="start",a="")=>`<text x="${x}" y="${y-4}" text-anchor="${anc}" class="nl"${a}>${esc(s)}</text>`,
+  /* two-pin parts: o "h" (pin 1 left) or "v" (pin 1 top), len between connection points */
+  two(x,y,o,len,draw){ const h=o==="h", p1={x,y,k:1}, p2=h?{x:x+len,y,k:2}:{x,y:y+len,k:2}, m=len/2;
+    const r=draw(h,h?x+m:x,h?y:y+m); p1.bx=h?x+m-r.half:x; p1.by=h?y:y+m-r.half; p2.bx=h?x+m+r.half:x; p2.by=h?y:y+m+r.half; return {s:r.s,p:[p1,p2]}; },
+  res(x,y,o,len=50){ return SK.two(x,y,o,len,(h,cx,cy)=>({half:14,s:h?`<rect class="body" x="${cx-14}" y="${cy-5}" width="28" height="10"/>`:`<rect class="body" x="${cx-5}" y="${cy-14}" width="10" height="28"/>`})); },
+  fb(x,y,o,len=40){ return SK.two(x,y,o,len,(h,cx,cy)=>({half:10,s:`<rect class="fillb" x="${cx-10}" y="${cy-4}" width="20" height="8" transform="rotate(${h?-30:60} ${cx} ${cy})"/>`})); },
+  /* pol: +1 marks pin 1 positive, -1 marks pin 2 positive */
+  cap(x,y,o,len=40,pol=0){ return SK.two(x,y,o,len,(h,cx,cy)=>{ const g=3, pl=(d,pos)=>pol&&!pos?(h?`<rect class="fillb" x="${cx+d-1.5}" y="${cy-9}" width="3" height="18"/>`:`<rect class="fillb" x="${cx-9}" y="${cy+d-1.5}" width="18" height="3"/>`):(h?`<path class="body" d="M${cx+d} ${cy-9}v18"/>`:`<path class="body" d="M${cx-9} ${cy+d}h18"/>`);
+    const plus=pol?(()=>{const d=pol>0?-g-6:g+6; return h?SK.t(cx+d,cy-10,"+","pn","middle"):SK.t(cx-14,cy+d+3,"+","pn","middle");})():"";
+    return {half:g, s:pl(-g,pol>0)+pl(g,pol<0)+plus}; }); },
+  /* diode/LED, horizontal or vertical; anode at the first connection point unless rev; KiCad numbering: 1 = K, 2 = A */
+  dio(x,y,o,len=40,led=false,rev=false){ const r=SK.two(x,y,o,len,(h,cx,cy)=>{ const s=rev?-1:1, tri=h?`M${cx-7*s} ${cy-7}L${cx+7*s} ${cy}L${cx-7*s} ${cy+7}Z`:`M${cx-7} ${cy-7*s}L${cx} ${cy+7*s}L${cx+7} ${cy-7*s}Z`, bar=h?`M${cx+7*s} ${cy-7}v14`:`M${cx-7} ${cy+7*s}h14`;
+      const ar=led?(h?`<path class="body thin" d="M${cx} ${cy-10}l6 -8M${cx+6} ${cy-10}l6 -8M${cx+3} ${cy-17}l3 -1 0 3M${cx+9} ${cy-17}l3 -1 0 3"/>`:`<path class="body thin" d="M${cx+10} ${cy}l8 -6M${cx+10} ${cy+6}l8 -6M${cx+16} ${cy-7}l2 0 -1 3M${cx+16} ${cy-1}l2 0 -1 3"/>`):"";
+      return {half:7,s:`<path class="body" d="${tri}"/><path class="body" d="${bar}"/>`+ar}; });
+    const [a,b]=r.p; if(rev){a.k=1;a.nm="K";b.k=2;b.nm="A";} else {a.k=2;a.nm="A";b.k=1;b.nm="K";} return r; },
+  sw(x,y,len=50){ const m=x+len/2; return {s:`<circle class="body" cx="${m-12}" cy="${y}" r="2.2"/><circle class="body" cx="${m+12}" cy="${y}" r="2.2"/><path class="body" d="M${m-12} ${y-6}h24M${m} ${y-6}v-6M${m-5} ${y-12}h10"/>`,
+    p:[{x,y,bx:m-14,by:y,k:1},{x:x+len,y,bx:m+14,by:y,k:2}]}; },
+  tp(x,y){ return {s:`<circle class="body" cx="${x}" cy="${y-16}" r="4"/>`,p:[{x,y,bx:x,by:y-12,k:1}]}; },
+  mot(x,y,len=60){ const cy=y+len/2; return {s:`<circle class="body" cx="${x}" cy="${cy}" r="12"/>`+SK.t(x,cy+4,"M","pl","middle"),p:[{x,y,bx:x,by:cy-12,k:1},{x,y:y+len,bx:x,by:cy+12,k:2}]}; },
+  /* N-channel MOSFET: gate connection at (x,y), drain 30 up, source 30 down */
+  nmos(x,y){ const c=x+22, r=x+30; return {s:`<path class="body" d="M${x+16} ${y-10}v20M${c} ${y-12}v6M${c} ${y-3}v6M${c} ${y+6}v6M${c} ${y-9}H${r}M${c} ${y+9}H${r}M${c} ${y}H${r}V${y+9}"/><path class="fillb" d="M${c+1} ${y}l5 -3v6z"/>`,
+    p:[{x,y,bx:x+16,by:y,k:1,nm:"G"},{x:r,y:y-30,bx:r,by:y-9,k:2,nm:"D"},{x:r,y:y+30,bx:r,by:y+9,k:3,nm:"S"}]}; },
+  /* IC box; pins [{side:"l"|"r"|"t"|"b", at, k, nm}], lead length 10 */
+  ic(x,y,w,h,pins){ let s=`<rect class="body" x="${x}" y="${y}" width="${w}" height="${h}"/>`; const P=pins.map(q=>{ const L=10;
+      const e=q.side==="l"?{bx:x,by:y+q.at,x:x-L,y:y+q.at}:q.side==="r"?{bx:x+w,by:y+q.at,x:x+w+L,y:y+q.at}:q.side==="t"?{bx:x+q.at,by:y,x:x+q.at,y:y-L}:{bx:x+q.at,by:y+h,x:x+q.at,y:y+h+L};
+      const nm=q.nm||"", ov=nm.indexOf("~"), name=nm.replace("~","");
+      if(q.side==="l"){ s+=SK.t(x+4,e.y+3,name,"pn2"); s+=SK.t(x-2,e.y-3,q.k,"pn","end"); if(ov>=0) s+=`<path class="body thin" d="M${x+4+ov*5.4} ${e.y-6}h${(name.length-ov)*5.4}"/>`; }
+      else if(q.side==="r"){ s+=SK.t(x+w-4,e.y+3,name,"pn2","end"); s+=SK.t(x+w+2,e.y-3,q.k,"pn"); }
+      else if(q.side==="t"){ s+=SK.t(e.x,y+12,name,"pn2","middle"); s+=SK.t(e.x+3,y-3,q.k,"pn"); }
+      else { s+=SK.t(e.x,y+h-5,name,"pn2","middle"); s+=SK.t(e.x+3,y+h+9,q.k,"pn"); }
+      return Object.assign(e,{k:q.k,nm:name,nc:q.nc}); });
+    return {s,p:P}; },
+  conn(x,y,n){ return {s:`<rect class="body" x="${x}" y="${y}" width="20" height="${n*20}"/>`+Array.from({length:n},(_,i)=>SK.t(x+10,y+14+i*20,i+1,"pn","middle")).join(""),
+    p:Array.from({length:n},(_,i)=>({x:x+30,y:y+10+i*20,bx:x+20,by:y+10+i*20,k:i+1}))}; }
+};
+const refv=(x,y,ref,val,anc="start")=>SK.t(x,y,ref,"ref",anc)+(val?SK.t(x,y+11,val,"val",anc):"");
+
+/* ---- Trace the net ---- */
+const NT=(()=>{
+  const parts=[], wires=[], marks=[];
+  const add=(ref,val,pt,nets,label)=>{ parts.push({ref,val,pt,nets,label}); };
+  /* power entry */
+  add("J1","5V IN",SK.conn(30,60,2),["VBUS","GND"],[40,40,"middle"]);
+  add("FB1","600R",SK.fb(90,70,"h",40),["VBUS","VIN"],[110,46,"middle"]);
+  add("C1","1u",SK.cap(160,70,"v",40),["VIN","GND"],[172,84]);
+  add("U1","AP2112K-3.3",SK.ic(210,58,60,44,[{side:"l",at:12,k:1,nm:"VIN"},{side:"l",at:32,k:3,nm:"EN"},{side:"b",at:30,k:2,nm:"GND"},{side:"r",at:12,k:5,nm:"VOUT"},{side:"r",at:32,k:4,nm:"NC",nc:1}]),["VIN","VIN","GND","+3V3","nc"],[210,40]);
+  add("C2","1u",SK.cap(310,70,"v",40),["+3V3","GND"],[322,84]);
+  add("TP1","",SK.tp(340,70),["+3V3"],[348,56]);
+  /* MCU */
+  add("U2","ATtiny85",SK.ic(300,210,80,120,[{side:"t",at:40,k:8,nm:"VCC"},{side:"b",at:40,k:4,nm:"GND"},{side:"l",at:90,k:1,nm:"PB5/~RESET"},
+    {side:"r",at:15,k:5,nm:"PB0"},{side:"r",at:35,k:6,nm:"PB1",nc:1},{side:"r",at:55,k:7,nm:"PB2",nc:1},{side:"r",at:75,k:2,nm:"PB3"},{side:"r",at:95,k:3,nm:"PB4",nc:1}]),
+    ["+3V3","GND","NRST","PB0","nc","nc","BTN","nc"],[296,226,"end"]);
+  add("C3","100n",SK.cap(250,195,"v",40),["+3V3","GND"],[237,211,"end"]);
+  /* reset RC */
+  add("R3","10k",SK.res(110,200,"v",50),["+3V3","NRST"],[120,222]);
+  add("C4","100n",SK.cap(110,280,"v",40),["NRST","GND"],[120,296]);
+  /* LED and button */
+  add("R1","330",SK.res(410,225,"h",50),["PB0","LEDA"],[435,206,"middle"]);
+  add("D1","RED",SK.dio(480,225,"h",40,true),["LEDA","GND"],[500,243,"middle"]);
+  add("R2","10k",SK.res(470,325,"v",50),["+3V3","BTN"],[480,347]);
+  add("SW1","",SK.sw(500,375,50),["BTN","GND"],[525,358,"middle"]);
+  const W=(n,pts)=>wires.push({n,pts});
+  W("VBUS",[[60,70],[90,70]]); W("GND",[[60,90],[70,90],[70,110]]);
+  W("VIN",[[130,70],[200,70]]); W("VIN",[[200,90],[180,90],[180,70]]);
+  W("+3V3",[[280,70],[400,70]]); W("+3V3",[[340,192],[340,200]]);
+  W("NRST",[[110,250],[110,280],[180,280]]); W("NRST",[[290,300],[250,300]]);
+  W("PB0",[[390,225],[410,225]]); W("LEDA",[[460,225],[480,225]]); W("GND",[[520,225],[550,225],[550,240]]);
+  W("BTN",[[390,285],[420,285]]); W("BTN",[[420,375],[500,375]]); W("GND",[[550,375],[570,375],[570,385]]);
+  const M=(n,kind,x,y,s)=>marks.push({n,kind,x,y,s});
+  [[160,70],[180,70]].forEach(p=>M("VIN","jn",...p)); [[310,70],[340,70]].forEach(p=>M("+3V3","jn",...p)); M("NRST","jn",110,280); M("BTN","jn",470,375);
+  [[70,110],[160,110],[240,112],[310,110],[250,235],[340,340],[110,320],[550,240],[570,385]].forEach(p=>M("GND","gnd",...p));
+  [[400,70],[340,192],[250,195],[110,200],[470,325]].forEach(p=>M("+3V3","pwr",...p,"+3V3"));
+  M("VBUS","lbl",64,70,"VBUS"); M("NRST","lbl",140,280,"NRST"); M("NRST","lbl",254,300,"NRST"); M("BTN","lbl",394,285,"BTN"); M("BTN","lbl",424,375,"BTN");
+  const NAME={VBUS:"VBUS",VIN:"unnamed",GND:"GND","+3V3":"+3V3",NRST:"NRST",PB0:"unnamed",LEDA:"unnamed",BTN:"BTN"};
+  const WHY={VBUS:"Named by a local label. The ferrite bead FB1 separates it from the regulator input.",
+    VIN:"No label, so the netlist names it after one of its pins. EN is tied to VIN, which keeps U1 always on.",
+    GND:"Nine GND symbols and almost no wire between them. Power symbols with the same name are one net.",
+    "+3V3":"Five +3V3 power symbols join U1's output to every part that needs it. TP1 gives a probe somewhere to land.",
+    NRST:"Two NRST labels join the reset RC to pin 1 with no wire across the page.",
+    PB0:"U2 pin 5 drives the LED through R1. No label, so the netlist names it after a pin.",
+    LEDA:"Between R1 and the LED anode. D1 is numbered the KiCad way: pin 1 is the cathode, pin 2 the anode.",
+    BTN:"R2 holds BTN at 3.3 V; pressing SW1 pulls it to 0 V. A label on each side joins U2 pin 2 to the button."};
+  return {parts,wires,marks,NAME,WHY};
+})();
+L.nettrace={title:"Trace the net",sub:"click any pin or wire",html:()=>{
+  let s="", pins=[], i=0;
+  NT.parts.forEach(pt=>{ const P=pt.pt; s+=`<g class="part">${P.s}${refv(pt.label[0],pt.label[1],pt.ref,pt.val,pt.label[2])}</g>`;
+    P.p.forEach((p,j)=>{ const n=pt.nets[j], name=p.nm?`${pt.ref} pin ${p.k}, ${p.nm}`:`${pt.ref} pin ${p.k}`;
+      pins.push(`<g class="pin" data-net="${n}" data-m="${pt.ref}.${p.k}" data-nm="${esc(p.nm||"")}" role="button" tabindex="${i++?-1:0}" aria-label="${esc(name)}">${SK.lead(p)}<circle class="hit" cx="${p.x}" cy="${p.y}" r="7"/>${n==="nc"?SK.nc(p.x,p.y):""}</g>`); }); });
+  NT.wires.forEach(w=>{ s+=SK.w(w.pts,` data-net="${w.n}"`)+`<polyline class="hitw" data-net="${w.n}" points="${w.pts.map(p=>p.join(",")).join(" ")}"/>`; });
+  NT.marks.forEach(m=>{ const a=` data-net="${m.n}"`; s+=m.kind==="jn"?SK.jn(m.x,m.y,a):m.kind==="gnd"?SK.gnd(m.x,m.y,a):m.kind==="pwr"?SK.pwr(m.x,m.y,m.s,a):SK.lbl(m.x,m.y,m.s,"start",a); });
+  return `<div class="schWrap"><svg class="sch" id="nt-sv" viewBox="0 0 620 405" role="group" aria-label="Schematic: 3.3 V regulator, ATtiny85 with decoupling, reset RC, LED and button. Use arrow keys to move between pins.">${s}${pins.join("")}</svg></div>
+  <div class="readout four">${ro("Net","nt-n",1)}${ro("Pins","nt-c")}<div class="ro wide"><div class="k">Members</div><div class="v sm" id="nt-m">—</div></div><p class="note" id="nt-w">Click a pin or a wire. Arrow keys step through the pins; Enter selects.</p></div>`;},
+ init(root){ const sv=$("#nt-sv",root), pins=$$(".pin",sv);
+  const pick=(n,el)=>{ $$("[data-net]",sv).forEach(e=>e.classList.toggle("on",n==="nc"?e===el:e.dataset.net===n));
+   if(n==="nc"){ setT("nt-n","not connected"); setT("nt-c","1"); setT("nt-m",el.dataset.m+` (${el.dataset.nm})`); note("nt-w","A no-connect flag: the pin is left open on purpose, so ERC doesn't report it."); return; }
+   const mem=pins.filter(p=>p.dataset.net===n).map(p=>p.dataset.m+(p.dataset.nm?` (${p.dataset.nm})`:""));
+   setT("nt-n",NT.NAME[n]); setT("nt-c",mem.length); setT("nt-m",mem.join(", ")); note("nt-w",NT.WHY[n]); };
+  const choose=(el,n)=>{ pick(n,el); BC.beep("click"); BC.touchLab("nettrace"); };
+  sv.addEventListener("click",e=>{ const el=e.target.closest("[data-net]"); if(!el) return; if(el.classList.contains("pin")){ pins.forEach(p=>p.tabIndex=-1); el.tabIndex=0; } choose(el,el.dataset.net); });
+  sv.addEventListener("keydown",e=>{ const el=e.target.closest(".pin"); if(!el) return; let i=pins.indexOf(el);
+   if(e.key==="Enter"||e.key===" "){ e.preventDefault(); choose(el,el.dataset.net); return; }
+   const d={ArrowRight:1,ArrowDown:1,ArrowLeft:-1,ArrowUp:-1}[e.key]; let j=d?(i+d+pins.length)%pins.length:e.key==="Home"?0:e.key==="End"?pins.length-1:-1;
+   if(e.key==="Escape"){ $$("[data-net]",sv).forEach(x=>x.classList.remove("on")); setT("nt-n","—"); setT("nt-c","—"); setT("nt-m","—"); return; }
+   if(j<0) return; e.preventDefault(); pins.forEach(p=>p.tabIndex=-1); pins[j].tabIndex=0; pins[j].focus(); choose(pins[j],pins[j].dataset.net); });
+ }};
+
+/* ---- Find the mistake ---- */
+/* each puzzle: title, draw() -> svg markup with target groups, targets {id:[label, box, why]}, bad: id */
+const MZ=(()=>{
+  const tg=(id,label,box,inner)=>`<g class="tg" data-t="${id}" role="button" tabindex="0" aria-label="${esc(label)}">${inner}<rect class="hitb" x="${box[0]}" y="${box[1]}" width="${box[2]}" height="${box[3]}"/></g>`;
+  const part=(P,ref,val,lx,ly,anc)=>P.s+P.p.map(p=>SK.lead(p)).join("")+refv(lx,ly,ref,val,anc);
+  const ncs=P=>P.p.filter(p=>p.nc).map(p=>SK.nc(p.x,p.y)).join("");
+  const mcu=(x,y,w,h,pins)=>SK.ic(x,y,w,h,pins);
+  const Z=[];
+  /* 1: LED with no series resistor */
+  Z.push({title:"Status LED",bad:"D1",draw(){ const U=mcu(100,50,80,100,[{side:"t",at:40,k:1,nm:"VDD"},{side:"b",at:40,k:8,nm:"VSS"},{side:"r",at:60,k:5,nm:"PA5"}]), C=SK.cap(40,40,"v",40), D=SK.dio(260,110,"h",40,true);
+    return SK.pwr(140,30,"+3V3")+SK.w([[140,30],[140,40]])+SK.gnd(140,160)+SK.pwr(40,40,"+3V3")+SK.gnd(40,80)+SK.gnd(330,125)+SK.w([[300,110],[330,110],[330,125]])
+     +tg("U1","U1, microcontroller",[95,45,90,110],part(U,"U1","MCU",182,46))
+     +tg("C1","C1, 100 nF capacitor",[26,35,50,50],part(C,"C1","100n",52,56))
+     +tg("D1","D1, red LED, wired from PA5 to ground",[190,92,115,32],SK.w([[190,110],[260,110]])+part(D,"D1","RED",280,135,"middle")); },
+   why:{U1:"U1 has its supply, its ground and its decoupling capacitor.",C1:"C1 is U1's 100 nF decoupling capacitor.",
+    D1:"D1 has no series resistor. The LED clamps PA5 near its forward voltage and the current is limited only by the pin's driver, far beyond its rating. Put 220 to 470 Ω between PA5 and the anode."}});
+  /* 2: electrolytic reversed */
+  Z.push({title:"12 V to 5 V",bad:"C1",draw(){ const J=SK.conn(20,60,2), C1=SK.cap(110,70,"v",40,-1), U=SK.ic(170,55,60,40,[{side:"l",at:15,k:1,nm:"IN"},{side:"b",at:30,k:2,nm:"GND"},{side:"r",at:15,k:3,nm:"OUT"}]), C2=SK.cap(290,70,"v",40);
+    return SK.w([[50,90],[60,90],[60,120]])+SK.gnd(60,120)+SK.w([[50,70],[160,70]])+SK.jn(110,70)+SK.gnd(110,110)+SK.gnd(200,105)+SK.w([[240,70],[330,70]])+SK.jn(290,70)+SK.gnd(290,110)+SK.pwr(330,70,"+5V")
+     +tg("J1","J1, 12 V input connector",[15,50,40,70],part(J,"J1","12V IN",30,38,"middle"))
+     +tg("C1","C1, 100 µF electrolytic capacitor",[96,72,60,40],part(C1,"C1","100u 25V",122,86))
+     +tg("U1","U1, 7805 regulator",[160,40,80,72],part(U,"U1","7805",170,36))
+     +tg("C2","C2, 100 nF ceramic capacitor",[276,72,56,40],part(C2,"C2","100n",302,86)); },
+   why:{J1:"J1 brings in 12 V on pin 1 and ground on pin 2.",U1:"The 7805 pinout is input 1, ground 2, output 3, as drawn.",C2:"C2 is ceramic, so it has no polarity.",
+    C1:"C1's + terminal is on the GND side, so 12 V sits across it backwards. A reversed electrolytic leaks, heats up and can vent. Turn it round: + to the 12 V net."}});
+  /* 3: I2C without pull-ups */
+  Z.push({title:"Sensor on I²C",bad:"BUS",draw(){ const U1=mcu(40,50,70,100,[{side:"t",at:35,k:1,nm:"VDD"},{side:"b",at:35,k:2,nm:"VSS"},{side:"r",at:35,k:7,nm:"SDA"},{side:"r",at:65,k:6,nm:"SCL"}]),
+      U2=mcu(240,50,70,100,[{side:"t",at:35,k:4,nm:"VDD"},{side:"b",at:35,k:1,nm:"GND"},{side:"l",at:35,k:3,nm:"SDA"},{side:"l",at:65,k:2,nm:"SCL"}]), C=SK.cap(345,40,"v",40);
+    return SK.pwr(75,30,"+3V3")+SK.w([[75,30],[75,40]])+SK.gnd(75,160)+SK.pwr(275,30,"+3V3")+SK.w([[275,30],[275,40]])+SK.gnd(275,160)+SK.pwr(345,40,"+3V3")+SK.gnd(345,80)
+     +tg("U1","U1, microcontroller",[35,45,80,110],part(U1,"U1","MCU",40,172))
+     +tg("U2","U2, sensor",[235,45,80,110],part(U2,"U2","SENSOR",240,172))
+     +tg("C1","C1, 100 nF capacitor",[330,35,46,50],part(C,"C1","100n",352,94))
+     +tg("BUS","SDA and SCL lines between U1 and U2",[120,70,110,55],SK.w([[120,85],[230,85]])+SK.w([[120,115],[230,115]])+SK.lbl(150,85,"SDA")+SK.lbl(150,115,"SCL")); },
+   why:{U1:"U1's SDA and SCL pins go to the matching pins on the sensor.",U2:"U2 has power, ground and its own decoupling capacitor.",C1:"C1 decouples U2's supply pin.",
+    BUS:"I²C pins are open-drain: they pull a line low but never drive it high. With no pull-up resistors to 3.3 V the lines never return high and nothing communicates. Add one resistor per line, 2.2 to 10 kΩ."}});
+  /* 4: MOSFET gate floating */
+  Z.push({title:"Motor driver",bad:"Q1",draw(){ const U=mcu(30,90,60,80,[{side:"t",at:30,k:1,nm:"VDD"},{side:"b",at:30,k:2,nm:"VSS"},{side:"r",at:40,k:9,nm:"PB1"}]), R=SK.res(130,130,"h",50), Q=SK.nmos(200,130), Mo=SK.mot(230,40,60), D=SK.dio(290,40,"v",60,false,true);
+    return SK.pwr(60,80,"+3V3")+SK.gnd(60,180)+SK.w([[100,130],[130,130]])+SK.w([[180,130],[200,130]])+SK.gnd(230,160)+SK.pwr(230,26,"+12V")+SK.w([[230,26],[230,40]])+SK.w([[290,40],[290,32],[230,32]])+SK.jn(230,32)+SK.w([[290,100],[230,100]])+SK.jn(230,100)
+     +tg("U1","U1, microcontroller",[25,85,80,90],part(U,"U1","MCU",34,186))
+     +tg("R1","R1, 100 Ω gate resistor",[125,112,60,30],part(R,"R1","100",155,109,"middle"))
+     +tg("Q1","Q1, N-channel MOSFET",[195,100,48,62],part(Q,"Q1","AO3400",244,146))
+     +tg("M1","M1, DC motor",[212,42,36,56],part(Mo,"M1","",206,74,"end"))
+     +tg("D1","D1, diode across the motor",[276,42,30,56],part(D,"D1","1N5819",302,66)); },
+   why:{U1:"U1's PB1 drives the gate through R1.",R1:"R1, 100 Ω, limits the gate charging current and damps ringing.",M1:"The motor sits between +12 V and the drain: a normal low-side switch.",
+    D1:"D1 is the flyback diode, cathode to +12 V. It carries the motor current when Q1 turns off.",
+    Q1:"Nothing holds Q1's gate low. While the MCU starts up its pin is a high-impedance input, so the gate floats: the motor can twitch, or Q1 can sit half on and overheat. Add 10 to 100 kΩ from gate to source."}});
+  /* 5: LDO without output capacitor */
+  Z.push({title:"3.3 V rail",bad:"U1",draw(){ const J=SK.conn(15,50,2), C1=SK.cap(95,60,"v",40), U1=SK.ic(140,45,60,40,[{side:"l",at:15,k:1,nm:"VIN"},{side:"l",at:30,k:3,nm:"EN"},{side:"b",at:30,k:2,nm:"GND"},{side:"r",at:15,k:5,nm:"VOUT"}]),
+      U2=mcu(250,110,70,60,[{side:"t",at:35,k:1,nm:"VDD"},{side:"b",at:35,k:8,nm:"VSS"}]), C2=SK.cap(345,100,"v",40);
+    return SK.w([[45,80],[55,80],[55,105]])+SK.gnd(55,105)+SK.w([[45,60],[130,60]])+SK.jn(95,60)+SK.gnd(95,100)+SK.w([[130,75],[115,75],[115,60]])+SK.jn(115,60)+SK.gnd(170,95)+SK.w([[210,60],[250,60]])+SK.pwr(250,60,"+3V3")
+     +SK.pwr(285,90,"+3V3")+SK.w([[285,90],[285,100]])+SK.gnd(285,180)+SK.pwr(345,100,"+3V3")+SK.gnd(345,140)
+     +tg("J1","J1, 5 V input connector",[10,40,40,60],part(J,"J1","5V IN",25,32,"middle"))
+     +tg("C1","C1, 1 µF capacitor",[80,62,30,40],part(C1,"C1","1u",88,76,"end"))
+     +tg("U1","U1, AP2112K-3.3 regulator",[125,30,95,70],part(U1,"U1","AP2112K-3.3",140,30))
+     +tg("U2","U2, microcontroller",[245,105,80,70],part(U2,"U2","MCU",240,128,"end"))
+     +tg("C2","C2, 100 nF capacitor",[330,102,46,40],part(C2,"C2","100n",352,116)); },
+   why:{J1:"J1 brings in 5 V.",C1:"C1 is U1's input capacitor.",U2:"U2 runs from +3V3 and has C2 as its decoupling capacitor.",C2:"C2 decouples U2's supply pin.",
+    U1:"U1's output has no capacitor. An LDO needs one close to VOUT, often at least 1 µF, to be stable, and oscillates without it. C2 is U2's decoupling capacitor, not the regulator's output capacitor."}});
+  /* 6: reverse-protection diode backwards */
+  Z.push({title:"Battery input",bad:"D1",draw(){ const J=SK.conn(15,60,2), D=SK.dio(80,70,"h",40,false,true), C1=SK.cap(145,70,"v",40), U=SK.ic(180,55,60,40,[{side:"l",at:15,k:1,nm:"IN"},{side:"b",at:30,k:2,nm:"GND"},{side:"r",at:15,k:3,nm:"OUT"}]), C2=SK.cap(290,70,"v",40);
+    return SK.w([[45,70],[80,70]])+SK.w([[45,90],[55,90],[55,115]])+SK.gnd(55,115)+SK.w([[120,70],[170,70]])+SK.jn(145,70)+SK.gnd(145,110)+SK.gnd(210,105)+SK.w([[250,70],[330,70]])+SK.jn(290,70)+SK.gnd(290,110)+SK.pwr(330,70,"+5V")
+     +tg("J1","J1, 9 V battery connector",[10,50,40,70],part(J,"J1","9V BAT",25,40,"middle"))
+     +tg("D1","D1, series diode",[74,50,52,34],part(D,"D1","1N5819",100,52,"middle"))
+     +tg("C1","C1, 10 µF capacitor",[130,72,40,40],part(C1,"C1","10u",137,86,"end"))
+     +tg("U1","U1, 7805 regulator",[170,40,80,72],part(U,"U1","7805",180,36))
+     +tg("C2","C2, 100 nF capacitor",[276,72,56,40],part(C2,"C2","100n",302,86)); },
+   why:{J1:"J1 brings the battery in: + on pin 1, − on pin 2.",C1:"C1 is the regulator's input capacitor.",U1:"The 7805 pinout is input 1, ground 2, output 3, as drawn.",C2:"C2 is the regulator's output capacitor.",
+    D1:"D1's cathode bar faces the battery, so it blocks the correct polarity and conducts when the battery goes in backwards: the opposite of its job. Turn it round, anode to the battery."}});
+  /* 7: four-way junction */
+  Z.push({title:"ADC input filter",bad:"JN",draw(){ const R1=SK.res(150,30,"v",50), R2=SK.res(150,120,"v",50), C=SK.cap(90,100,"v",40), U=mcu(260,40,80,100,[{side:"t",at:40,k:1,nm:"VDD"},{side:"b",at:40,k:8,nm:"VSS"},{side:"l",at:60,k:3,nm:"ADC0"}]);
+    return SK.w([[100,30],[150,30]])+SK.lbl(102,30,"VBAT")+SK.w([[150,80],[150,120]])+SK.w([[150,100],[90,100]])+SK.w([[150,100],[250,100]])+SK.gnd(150,170)+SK.gnd(90,140)+SK.pwr(300,30,"+3V3")+SK.gnd(300,150)
+     +tg("R1","R1, 100 kΩ resistor",[136,36,40,50],part(R1,"R1","100k",160,52))
+     +tg("R2","R2, 33 kΩ resistor",[136,124,40,44],part(R2,"R2","33k",160,142))
+     +tg("C1","C1, 100 nF capacitor",[74,104,32,34],part(C,"C1","100n",78,116,"end"))
+     +tg("JN","the junction where four wires meet",[140,90,20,20],SK.jn(150,100))
+     +tg("U1","U1, microcontroller",[255,35,90,110],part(U,"U1","MCU",345,36)); },
+   why:{R1:"R1 and R2 divide VBAT down into the ADC's range.",R2:"R2 is the bottom of the divider.",C1:"C1 filters the divider output and gives the ADC's sampling capacitor a charge to draw on.",U1:"ADC0 reads the divided voltage.",
+    JN:"Four wires meet at one dot. KiCad treats it as a connection, but if the dot is lost in a printout or a zoomed-out PDF it reads as two wires crossing. Move C1's wire a grid step down so the node becomes two T-junctions."}});
+  /* 8: label typo splits the net */
+  Z.push({title:"Sensor supply",bad:"LBL",draw(){ const C1=SK.cap(32,55,"v",40), U1=SK.ic(80,40,60,40,[{side:"l",at:15,k:1,nm:"VIN"},{side:"l",at:30,k:3,nm:"EN"},{side:"b",at:30,k:2,nm:"GND"},{side:"r",at:15,k:5,nm:"VOUT"}]), C2=SK.cap(180,55,"v",40),
+      U2=SK.ic(270,100,70,60,[{side:"l",at:20,k:1,nm:"VS"},{side:"r",at:20,k:2,nm:"VOUT"},{side:"b",at:35,k:3,nm:"GND"}]), C3=SK.cap(230,120,"v",40);
+    return SK.w([[8,55],[70,55]])+SK.lbl(8,55,"VBUS")+SK.jn(32,55)+SK.gnd(32,95)+SK.w([[70,70],[62,70],[62,55]])+SK.jn(62,55)+SK.gnd(110,90)+SK.w([[150,55],[230,55]])+SK.jn(180,55)+SK.gnd(180,95)+SK.lbl(192,55,"VCC_3V3")
+     +SK.w([[200,120],[260,120]])+SK.jn(230,120)+SK.gnd(230,160)+SK.gnd(305,170)+SK.w([[350,120],[378,120]])+SK.lbl(352,120,"TEMP")
+     +tg("C1","C1, 1 µF capacitor",[22,57,34,40],part(C1,"C1","1u",42,72))
+     +tg("U1","U1, AP2112K-3.3 regulator",[66,14,90,82],part(U1,"U1","AP2112K-3.3",80,22))
+     +tg("C2","C2, 1 µF capacitor",[166,57,34,40],part(C2,"C2","1u",190,72))
+     +tg("LBL","the VCC label on U2's supply",[198,104,32,20],SK.lbl(202,120,"VCC"))
+     +tg("C3","C3, 100 nF capacitor",[216,124,48,36],part(C3,"C3","100n",242,140))
+     +tg("U2","U2, temperature sensor",[265,95,80,75],part(U2,"U2","TEMP SENSOR",272,186)); },
+   why:{C1:"C1 is the regulator's input capacitor.",U1:"EN is tied to VIN, and both capacitors are in place.",C2:"C2 is the regulator's output capacitor.",C3:"C3 decouples U2's supply pin.",U2:"U2's pins are wired as its datasheet expects.",
+    LBL:"U2's supply label reads VCC; the regulator's output is VCC_3V3. Labels connect only by exact name, so U2 has no power. ERC reports its power-input pin as not driven."}});
+  return Z;
+})();
+L.mistake={title:"Find the mistake",sub:"one wrong part per schematic",html:()=>`
+  <div class="ctrls"><div class="gates" id="mz-nav" role="group" aria-label="Puzzles">${MZ.map((z,i)=>`<button type="button" data-i="${i}" aria-pressed="${i===0}" aria-label="Puzzle ${i+1}, ${esc(z.title)}">${i+1}</button>`).join("")}</div>
+  <p class="mzTask"><b id="mz-h"></b> One thing on this schematic is wrong. Click it.</p></div>
+  <div class="readout">${ro("Puzzles solved","mz-f",1)}${ro("This one","mz-s")}</div>
+  <div class="schWrap"><svg class="sch mz" id="mz-sv" viewBox="0 0 380 200" role="group" aria-label="Schematic puzzle. Each part is a button."></svg></div>
+  <p class="note" id="mz-n" aria-live="polite"></p>
+  <div class="row2"><button class="btn" type="button" id="mz-next">Next puzzle →</button></div>`,
+ init(root){ let cur=0, done=false;
+  const solved=i=>!!BC.S.xpOnce["mistake-"+i];
+  const stat=()=>{ setT("mz-f",`${MZ.filter((_,i)=>solved(i)).length} of ${MZ.length}`); setT("mz-s",done?"found":solved(cur)?"solved before":"not yet");
+   $$("#mz-nav button",root).forEach(b=>{ const i=+b.dataset.i; b.setAttribute("aria-pressed",i===cur); b.classList.toggle("right",solved(i)); b.textContent=(solved(i)?"✓ ":"")+(i+1); }); };
+  const show=i=>{ cur=i; done=false; const z=MZ[i]; $("#mz-sv",root).innerHTML=z.draw(); setT("mz-h",`${i+1}. ${z.title}.`); note("mz-n",""); stat(); };
+  const hit=t=>{ const z=MZ[cur], g=t.dataset.t; BC.touchLab("mistake");
+   if(g===z.bad){ done=true; t.classList.add("ok"); note("mz-n",z.why[g],"good"); BC.beep("good"); BC.once("mistake-"+cur,10,"mistake found"); stat(); }
+   else { t.classList.add("miss"); note("mz-n",`${t.getAttribute("aria-label").split(",")[0]} is fine. ${z.why[g]}`,"bad"); BC.beep("bad"); } };
+  const sv=$("#mz-sv",root);
+  sv.addEventListener("click",e=>{ const t=e.target.closest(".tg"); if(t) hit(t); });
+  sv.addEventListener("keydown",e=>{ const t=e.target.closest(".tg"); if(t&&(e.key==="Enter"||e.key===" ")){ e.preventDefault(); hit(t); } });
+  $("#mz-nav",root).addEventListener("click",e=>{ const b=e.target.closest("button"); if(b) show(+b.dataset.i); });
+  $("#mz-next",root).addEventListener("click",()=>{ const nx=MZ.findIndex((_,i)=>i>cur&&!solved(i)), any=MZ.findIndex((_,i)=>!solved(i)); show(nx>=0?nx:any>=0?any:(cur+1)%MZ.length); });
+  show(Math.max(0,MZ.findIndex((_,i)=>!solved(i))));
+ }};
+
+/* ---- True size ---- */
+/* typical body sizes (mm). k: chip | gull | qfn | bga | dip | axial. Pads follow a simple illustrative rule, not a library footprint. */
+const PKG=[
+ {id:"0402",name:"0402 (1005 metric)",k:"chip",L:1.0,W:0.5,t:0.25,pins:2,fp:"R_0402_1005Metric",why:"Common in phones and dense modules. Hard to solder by hand without magnification."},
+ {id:"0603",name:"0603 (1608 metric)",k:"chip",L:1.6,W:0.8,t:0.3,pins:2,fp:"R_0603_1608Metric",why:"The everyday passive on small boards. Hand-solderable with a fine tip."},
+ {id:"0805",name:"0805 (2012 metric)",k:"chip",L:2.0,W:1.25,t:0.4,pins:2,fp:"R_0805_2012Metric",why:"Easy to hand-solder. Higher power and voltage ratings than 0603."},
+ {id:"1206",name:"1206 (3216 metric)",k:"chip",L:3.2,W:1.6,t:0.5,pins:2,fp:"R_1206_3216Metric",why:"Used where power or voltage matters; a 1206 resistor is typically rated ¼ W."},
+ {id:"sot23",name:"SOT-23",k:"gull",L:2.9,W:1.3,span:2.4,lw:0.4,foot:0.45,p:0.95,pins:3,rows:[[-0.95,0.95],[0]],fp:"SOT-23",why:"Pins 1 and 2 on one side, 1.9 mm apart; pin 3 opposite. The package is standard, the pinout is not: check it for every MPN."},
+ {id:"soic8",name:"SOIC-8",k:"gull",L:4.9,W:3.9,span:6.0,lw:0.42,foot:0.8,p:1.27,pins:8,fp:"SOIC-8_3.9x4.9mm_P1.27mm",why:"The easiest IC package to hand-solder. A wider 5.3 mm body version also exists, with a different footprint."},
+ {id:"tssop16",name:"TSSOP-16",k:"gull",L:5.0,W:4.4,span:6.4,lw:0.25,foot:0.6,p:0.65,pins:16,fp:"TSSOP-16_4.4x5mm_P0.65mm",why:"Drag-solderable with flux, but bridges between pins are common."},
+ {id:"qfn32",name:"QFN-32",k:"qfn",L:5,W:5,p:0.5,tl:0.4,tw:0.25,ep:3.45,pins:32,fp:"QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm",why:"Terminals sit under the body edge, and the exposed pad in the middle must be soldered, usually to GND. The ESP32-C6 chip is a 5 × 5 mm QFN too."},
+ {id:"bga100",name:"LFBGA-100",k:"bga",L:10,W:10,p:0.8,n:10,ball:0.45,pins:100,fp:"LFBGA-100_10x10mm_Layout10x10_P0.8mm",why:"Balls on a grid under the whole body. Inner balls need vias and usually more board layers, and only X-ray can inspect the joints."},
+ {id:"dip8",name:"DIP-8",k:"dip",L:9.27,W:6.35,p:2.54,row:7.62,pins:8,fp:"DIP-8_W7.62mm",why:"Through-hole, 2.54 mm (0.1 in) pitch with rows 7.62 mm apart: fits breadboards and perfboard."},
+ {id:"axial",name:"Axial resistor, ¼ W",k:"axial",L:6.3,W:2.5,p:10.16,pins:2,fp:"R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",why:"A through-hole resistor laid flat. The footprint's holes sit 10.16 mm apart, well beyond the body."}
+];
+/* geometry in mm, centred on 0,0: body rect, leads [x,y,w,h] or balls [x,y,r], pads, pin 1 position, half extents */
+function pkgGeo(k){
+  const g={body:[-k.L/2,-k.W/2,k.L,k.W],leads:[],balls:[],pads:[],holes:[],pin1:null,pitch:null};
+  if(k.k==="chip"){ [-1,1].forEach(s=>{ g.leads.push([s<0?-k.L/2:k.L/2-k.t,-k.W/2,k.t,k.W]); const a=k.L/2-k.t-0.05, b=k.L/2+0.3; g.pads.push([s<0?-b:a,-(k.W+0.1)/2,b-a,k.W+0.1]); }); }
+  else if(k.k==="gull"){ const rows=k.rows||(()=>{const n=k.pins/2; const xs=Array.from({length:n},(_,i)=>(i-(n-1)/2)*k.p); return [xs,xs];})();
+    const pw=Math.min(k.lw+0.15,k.p-0.2);
+    rows.forEach((xs,r)=>xs.forEach(x=>{ const s=r?-1:1; g.leads.push([x-k.lw/2,s>0?k.W/2:-k.span/2,k.lw,k.span/2-k.W/2]); const a=k.span/2-k.foot-0.15, b=k.span/2+0.35; g.pads.push([x-pw/2,s>0?a:-b,pw,b-a]); }));
+    g.pin1=[rows[0][0],k.W/2-0.45]; g.pitch=k.rows?[rows[0][0],rows[1][0]]:[rows[0][0],rows[0][1]]; }
+  else if(k.k==="qfn"){ const n=k.pins/4, xs=Array.from({length:n},(_,i)=>(i-(n-1)/2)*k.p), h=k.L/2, pw=k.tw+0.03;
+    xs.forEach(x=>{ [[x,h-k.tl/2,k.tw,k.tl],[x,-h+k.tl/2,k.tw,k.tl],[h-k.tl/2,x,k.tl,k.tw],[-h+k.tl/2,x,k.tl,k.tw]].forEach(([cx,cy,w,hh])=>g.leads.push([cx-w/2,cy-hh/2,w,hh])); });
+    xs.forEach(x=>{ const a=h-k.tl-0.05, b=h+0.3, L=b-a; [[x-pw/2,a,pw,L],[x-pw/2,-b,pw,L],[a,x-pw/2,L,pw],[-b,x-pw/2,L,pw]].forEach(r=>g.pads.push(r)); });
+    g.pads.push([-k.ep/2,-k.ep/2,k.ep,k.ep]); g.leads.push([-k.ep/2,-k.ep/2,k.ep,k.ep]); g.pin1=[-h+0.6,-h+0.6]; g.pitch=[xs[0],xs[1]]; g.hidden=true; }
+  else if(k.k==="bga"){ for(let i=0;i<k.n;i++) for(let j=0;j<k.n;j++){ const x=(i-(k.n-1)/2)*k.p, y=(j-(k.n-1)/2)*k.p; g.balls.push([x,y,k.ball/2]); g.pads.push([x,y,0.2]); }
+    g.pin1=[-k.L/2+0.6,-k.W/2+0.6]; const x0=-(k.n-1)/2*k.p; g.pitch=[x0,x0+k.p]; g.hidden=true; }
+  else if(k.k==="dip"){ const n=k.pins/2; for(let i=0;i<n;i++){ const x=(i-(n-1)/2)*k.p; [1,-1].forEach(s=>{ g.leads.push([x-0.25,s>0?k.W/2:-k.row/2,0.5,k.row/2-k.W/2]); g.pads.push([x,s*k.row/2,0.8]); g.holes.push([x,s*k.row/2,0.4]); }); }
+    g.pin1=[-(n-1)/2*k.p,k.W/2-1]; g.sq=[-(n-1)/2*k.p,k.row/2]; g.pitch=[-(n-1)/2*k.p,-(n-1)/2*k.p+k.p]; }
+  else if(k.k==="axial"){ [-1,1].forEach(s=>{ g.leads.push([s<0?-k.p/2:k.L/2,-0.3,k.p/2-k.L/2,0.6]); g.pads.push([s*k.p/2,0,0.8]); g.holes.push([s*k.p/2,0,0.4]); }); g.round=true; }
+  const xs=[], ys=[]; const box=r=>{xs.push(r[0],r[0]+r[2]); ys.push(r[1],r[1]+r[3]);};
+  box(g.body); g.leads.forEach(box); g.pads.forEach(p=>p.length===4?box(p):box([p[0]-p[2],p[1]-p[2],2*p[2],2*p[2]])); g.balls.forEach(b=>box([b[0]-b[2],b[1]-b[2],2*b[2],2*b[2]]));
+  g.ext=[Math.max(-Math.min(...xs),Math.max(...xs)),Math.max(-Math.min(...ys),Math.max(...ys))];
+  const r2=v=>Math.ceil(v*20-1e-9)/20; g.court=[r2(g.ext[0]+0.25),r2(g.ext[1]+0.25)];   /* courtyard: 0.25 mm around everything, on a 0.05 mm grid */
+  return g;
+}
+const pR=(r,c,a="")=>`<rect class="${c}" x="${+r[0].toFixed(3)}" y="${+r[1].toFixed(3)}" width="${+r[2].toFixed(3)}" height="${+r[3].toFixed(3)}"${a}/>`;
+const pC=(c,cl)=>`<circle class="${cl}" cx="${+c[0].toFixed(3)}" cy="${+c[1].toFixed(3)}" r="${c[2]}"/>`;
+/* package at true size: body and leads only */
+function pkgTrue(k,g){ return (g.hidden?"":g.leads.map(r=>pR(r,"pkl")).join(""))+(k.k==="axial"?`<rect class="pkb" x="${-k.L/2}" y="${-k.W/2}" width="${k.L}" height="${k.W}" rx="${k.W/2}"/>`:pR(g.body,"pkb")); }
+function pkgBig(k,g){ const pads=g.pads.map(p=>p.length===4?pR(p,"pad"):pC(p,"pad")).join("")+(g.sq?pR([g.sq[0]-0.8,g.sq[1]-0.8,1.6,1.6],"pad"):"")+g.holes.map(h=>pC(h,"hole")).join("");
+  const body=k.k==="axial"?`<rect class="pbo" x="${-k.L/2}" y="${-k.W/2}" width="${k.L}" height="${k.W}" rx="${k.W/2}"/>`:pR(g.body,"pbo");
+  const leads=g.leads.map(r=>pR(r,g.hidden?"plh":"plo")).join("")+g.balls.map(b=>pC(b,"plh")).join("");
+  const court=pR([-g.court[0],-g.court[1],2*g.court[0],2*g.court[1]],"crt");
+  const p1=g.pin1?`<circle class="p1" cx="${g.pin1[0]}" cy="${g.pin1[1]}" r="${Math.max(0.12,Math.min(k.L,k.W)/18)}"/>`:"";
+  return court+pads+leads+body+p1; }
+function pkgDims(k,g,fs){ const e=g.ext, y=e[1]+fs*1.6, x=e[0]+fs*0.8, t=(x,y,s,a="middle",rot)=>`<text class="dim" x="${x}" y="${y}" text-anchor="${a}" font-size="${fs}"${rot?` transform="rotate(-90 ${x} ${y})"`:""}>${s}</text>`;
+  let s=`<path class="dl" d="M${-k.L/2} ${y}H${k.L/2}M${-k.L/2} ${y-fs*.4}v${fs*.8}M${k.L/2} ${y-fs*.4}v${fs*.8}"/>`+t(0,y+fs*1.2,`${k.L} mm`);
+  s+=`<path class="dl" d="M${x} ${-k.W/2}V${k.W/2}M${x-fs*.4} ${-k.W/2}h${fs*.8}M${x-fs*.4} ${k.W/2}h${fs*.8}"/>`+t(x+fs*1.3,0,`${k.W} mm`,"middle",1);
+  if(g.pitch){ const [a,b]=g.pitch, py=-(e[1]+fs*0.9); s+=`<path class="dl acc" d="M${a} ${py}H${b}M${a} ${py-fs*.4}v${fs*.8}M${b} ${py-fs*.4}v${fs*.8}"/>`+t((a+b)/2,py-fs*0.7,`${k.p} mm`,"middle"); }
+  return s; }
+L.truesize={title:"True size",sub:"packages at 1 : 1 on your screen",html:()=>{ const pm=BC.S.pxmm||96/25.4;
+  return `<div class="ctrls"><div class="pkgPick" id="ts-p" role="group" aria-label="Package">${PKG.map((k,i)=>`<button type="button" data-i="${i}" aria-pressed="${i===1}"><svg aria-hidden="true"></svg><span>${esc(k.name.split(" (")[0])}</span></button>`).join("")}</div>
+   <details class="cal" id="ts-cal"><summary>Calibrate to your screen</summary>
+    <p class="note">Hold a bank card against the screen and drag the slider until the outline matches its long edge, 85.6 mm.</p>
+    ${rng("ts-k","Screen scale",2,9,0.01,pm.toFixed(2))}
+    <div class="cardBox" id="ts-cb"><svg id="ts-card" aria-label="Outline of a bank card, 85.6 by 54 millimetres, at the current scale"></svg></div>
+    <div class="row2"><div class="ctrl"><label for="ts-d"><span>Or enter the screen diagonal, in inches</span></label><input type="text" inputmode="decimal" id="ts-d" autocomplete="off" placeholder="13.3"></div><button class="btn" type="button" id="ts-da">Apply</button><button class="btn" type="button" id="ts-r">Reset</button></div>
+    <p class="note" id="ts-cn" aria-live="polite"></p></details></div>
+  <div class="readout">${ro("Package","ts-n",1)}${ro("Body, typical","ts-b")}${ro("Pitch","ts-pi")}${ro("Pins","ts-c")}${ro("Body area","ts-a")}<div class="ro wide"><div class="k">KiCad footprint</div><div class="v sm" id="ts-fp">—</div></div><p class="note" id="ts-w"></p></div>
+  <div class="tsTrue"><div class="label" id="ts-tl">actual size</div><svg id="ts-ts" role="img"></svg></div>
+  <div class="tsBig"><svg id="ts-big" role="img"></svg><p class="label tsKey"><i class="kp"></i>pads (land pattern) <i class="kb"></i>part body <i class="kc"></i>courtyard <i class="k1"></i>pin 1</p></div>`;},
+ init(root){ const self=this; self.i=1;
+  $("#ts-p",root).addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; self.i=+b.dataset.i; $$("#ts-p button",root).forEach(x=>x.setAttribute("aria-pressed",x===b)); BC.beep("click"); BC.touchLab("truesize"); self.run(); });
+  const setK=(v,msg)=>{ v=clamp(v,2,9); $("#ts-k").value=v.toFixed(2); BC.S.pxmm=v; BC.save(); note("ts-cn",msg,"good"); self.run(); };
+  $("#ts-da",root).addEventListener("click",()=>{ const d=parseFloat($("#ts-d").value.replace(",",".")); if(!(d>=3&&d<=100)){ note("ts-cn","Enter the diagonal in inches, between 3 and 100.","bad"); return; }
+   const v=Math.hypot(screen.width,screen.height)/(d*25.4); if(v<2||v>9){ note("ts-cn","That diagonal gives an unlikely scale for this screen. Use the card instead.","bad"); return; } setK(v,`Set from a ${d} in diagonal.`); BC.touchLab("truesize"); });
+  $("#ts-r",root).addEventListener("click",()=>{ delete BC.S.pxmm; BC.save(); $("#ts-k").value=(96/25.4).toFixed(2); note("ts-cn","Back to the browser's nominal 96 px per inch."); self.run(); });
+  $("#ts-k",root).addEventListener("input",()=>{ BC.S.pxmm=+$("#ts-k").value; BC.save(); note("ts-cn",""); });
+ },
+ run(){ const k=PKG[this.i??1], g=pkgGeo(k), pm=+$("#ts-k").value, cal=!!BC.S.pxmm;
+  out("ts-k",pm.toFixed(2)+" px/mm"+(cal?"":" (nominal)"));
+  /* picker thumbnails at true size */
+  $$("#ts-p button svg").forEach((s,i)=>{ const q=PKG[i], gg=pkgGeo(q), e=gg.ext; s.setAttribute("viewBox",`${-e[0]} ${-e[1]} ${2*e[0]} ${2*e[1]}`); s.setAttribute("width",(2*e[0]*pm).toFixed(1)); s.setAttribute("height",(2*e[1]*pm).toFixed(1)); s.innerHTML=pkgTrue(q,gg); });
+  /* true size next to a ruler */
+  const host=$("#ts-ts").parentElement, avail=Math.max(120,host.clientWidth-4), e=g.ext, n=Math.max(5,Math.min(40,Math.floor(avail/pm)-1)), Wmm=n+1, Hmm=2*e[1]+8;
+  let rl=""; for(let i=0;i<=n;i++){ const h=i%10===0?3:i%5===0?2:1.2; rl+=`<path class="tick" d="M${i} ${Hmm-4}v${-h}"/>`; if(i%10===0) rl+=`<text class="rt" x="${i}" y="${Hmm-0.3}" text-anchor="middle">${i}</text>`; }
+  const tsv=$("#ts-ts"); tsv.setAttribute("viewBox",`-0.5 0 ${Wmm} ${Hmm}`); tsv.setAttribute("width",(Wmm*pm).toFixed(1)); tsv.setAttribute("height",(Hmm*pm).toFixed(1));
+  tsv.setAttribute("aria-label",`${k.name} at actual size above a millimetre ruler`);
+  tsv.innerHTML=`<path class="tick" d="M0 ${Hmm-4}H${n}"/>${rl}<g transform="translate(${e[0]} ${e[1]+1})">${pkgTrue(k,g)}</g>`;
+  setT("ts-tl",cal?"actual size":"actual size, if your screen is at 96 px per inch; calibrate below");
+  /* magnified footprint */
+  const c=g.court, fs=Math.max(c[0],c[1])/8, pad=fs*3.4, vb=[-c[0]-pad,-c[1]-pad,2*c[0]+2*pad,2*c[1]+2*pad];
+  const big=$("#ts-big"); big.setAttribute("viewBox",vb.join(" ")); big.setAttribute("aria-label",`${k.name} footprint, magnified: pads, body outline, courtyard and dimensions`);
+  big.innerHTML=pkgBig(k,g)+pkgDims(k,g,fs);
+  setT("ts-n",k.name); setT("ts-b",`${k.L} × ${k.W} mm`); setT("ts-pi",k.k==="chip"?"— (two terminals)":k.k==="axial"?`${k.p} mm between holes`:`${k.p} mm`); setT("ts-c",k.k==="qfn"?`${k.pins} + exposed pad`:String(k.pins));
+  setT("ts-a",`${+(k.L*k.W).toPrecision(3)} mm²`); setT("ts-fp",k.fp); note("ts-w",k.why);
+  /* calibration card: landscape if it fits, else portrait */
+  const cb=$("#ts-cb"), cw=cb.clientWidth||300, land=85.6*pm+4<=cw, cwmm=land?85.6:53.98, chmm=land?53.98:85.6, card=$("#ts-card");
+  card.setAttribute("viewBox",`-0.3 -0.3 ${cwmm+0.6} ${chmm+0.6}`); card.setAttribute("width",((cwmm+0.6)*pm).toFixed(1)); card.setAttribute("height",((chmm+0.6)*pm).toFixed(1));
+  card.innerHTML=`<rect class="card" x="0" y="0" width="${cwmm}" height="${chmm}" rx="3.18"/><text class="rt" x="${cwmm/2}" y="${chmm/2}" text-anchor="middle">85.6 × 54 mm</text>`;
+ }};
+
 /* ---------- home figure: a battery and one resistor ---------- */
 BC.mountHero=function(host){
   host.innerHTML=`<div class="figBody"><canvas id="hr-cv" aria-label="A 9 volt battery driving a resistor. Moving dots show current."></canvas>

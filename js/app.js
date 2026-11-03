@@ -236,7 +236,7 @@ function about(){
 function backupJSON(){ return JSON.stringify({app:"ohmly",v:1,saved:new Date().toISOString(),state:S}); }
 function importBackup(txt){
   try{ const o=JSON.parse(txt); const st=o&&o.app==="ohmly"?o.state:o; if(!st||typeof st!=="object"||typeof st.xp!=="number") throw new Error("bad");
-    Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,BC.sanitize(st)); BC.save(); applyTheme(); render();
+    const px=S.pxmm; Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,BC.sanitize(st)); if(px) S.pxmm=px; else delete S.pxmm; BC.save(); applyTheme(); render();
     const m=$("#impMsg"); if(m){m.className="note good"; m.textContent=`Imported: ${S.xp} XP, ${Object.keys(S.badges).length} badges.`;} }
   catch(e){ const m=$("#impMsg"); if(m){m.className="note bad"; m.textContent="That isn't an Ohmly backup. Make sure you copied all of it, from the first { to the last }.";} }
 }
@@ -288,7 +288,7 @@ function render(){
     $("#impGo").addEventListener("click",()=>importBackup($("#impText").value));
     $("#reset").addEventListener("click",()=>{$("#resetConfirm").hidden=false; $("#resetNo").focus();});
     $("#resetNo").addEventListener("click",()=>{$("#resetConfirm").hidden=true; $("#reset").focus();});
-    $("#resetYes").addEventListener("click",()=>{const keep={sound:S.sound,theme:S.theme}; Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,BC.defaults(),keep); BC.save(); render(); $("#impMsg").className="note good"; $("#impMsg").textContent="All progress erased.";});
+    $("#resetYes").addEventListener("click",()=>{const keep={sound:S.sound,theme:S.theme}; if(S.pxmm) keep.pxmm=S.pxmm; Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,BC.defaults(),keep); BC.save(); render(); $("#impMsg").className="note good"; $("#impMsg").textContent="All progress erased.";});
   } else if(h==="home"||h==="view"){ currentKey="home"; v.innerHTML=home(); title="Ohmly · An interactive platform for learning electronics"; BC.mountHero($("#heroHost")); }
   else { currentKey="404"; v.innerHTML=`<header class="stack"><h1 tabindex="-1">Not found</h1><p class="lede muted">There is nothing at this address. <a href="#home">Back to the contents</a>.</p></header>`; title="Not found · Ohmly"; }
   document.title=title; rail(currentKey); header(); window.scrollTo(0,0);
