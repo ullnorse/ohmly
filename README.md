@@ -43,9 +43,10 @@ css/fonts.css     local @font-face rules
 fonts/            woff2 files + OFL license texts
 js/data.js        course content: modules, ideas, formulas, quizzes
 js/core.js        state, XP, badges, sound, confetti, plotting
+js/problems.js    practice-problem templates, SI answer parser, grading, problem cards
 js/labs.js        the 27 interactive labs
 js/games.js       the arcade games
-js/app.js         views (contents, modules, arcade, logbook, about), routing, settings, backup/import
+js/app.js         views (contents, modules, reference, practice, arcade, logbook, about), routing, settings, backup/import
 og.png            social preview image (1200×630)
 apple-touch-icon.png  home-screen icon (180×180)
 404.html          not-found page for GitHub Pages
@@ -54,7 +55,20 @@ LICENSE           MIT (code) and CC BY 4.0 (course text)
 
 ## Editing content
 
-All course text lives in `js/data.js`. Each module has `n`, `part` (A, B or C), `title`, `blurb`, `big` (intro), `ideas`, `formulas`, `tip`, `labs` (lab ids from `labs.js`), `quiz` (`q`, options `o`, index of the right answer `a`, explanation `w`) and an optional `reading` note.
+All course text lives in `js/data.js`. Each module has `n`, `part` (A, B or C), `title`, `blurb`, `big` (intro), `ideas`, `formulas`, `tip`, `labs` (lab ids from `labs.js`), `quiz` (`q`, options `o`, index of the right answer `a`, explanation `w`) and an optional `reading` note. Two optional fields add sections that are hidden when absent:
+
+- `ex: [{q, steps:[...], ans}]` worked examples, one numbered step per line, units at every step.
+- `deep: [{t, body}]` collapsed "Going deeper" entries, never counted toward completion. In `body`, blocks are separated by a blank line; a block of `= ` lines is a formula, a block of `- ` lines is a list, anything else is a paragraph.
+
+Module page order: intro, key points, formulas, worked examples, labs, practice problems, quiz, going deeper, note, reading.
+
+## Practice problems
+
+Add templates to `BC.PROBLEMS[moduleNumber]` in `js/problems.js` (3 or 4 per module). A template is a function returning `{q, ans, unit, steps}` with random values, plus optional `tol` (relative, default `0.02`) and `std:true` (also accept the nearest E12 or E24 value). `ans` is in base SI units (A, V, Ω, W, Hz, s); build `steps` from the same numbers as `q`, with `BC.fmt` for prefixes. The module's Practice section and the Practice page drill pick new templates up automatically; the drill draws only from modules that have templates. XP (15) is paid once per template, stored in `probs` as `"module-index"`.
+
+Answers go through `BC.parseSI`: `4.7k`, `15m`, `2.2u`, `2.2µ`, `1M`, `1meg`, `4k7`, `1e-3`. A unit after the number (`mA`, `kΩ`, `Hz`) is ignored.
+
+Reference sections are listed in `reference()` in `app.js`; add one entry per new section.
 
 Progress is stored in `localStorage` under the key `ohmly-v1`. If you change the structure of the state, bump the key or add a migration.
 
