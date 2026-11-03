@@ -180,7 +180,109 @@ const T={
  ()=>{ const C=pick([100e-9,1e-6,10e-6,100e-6]); let t,R; do{ t=pick([0.01,0.05,0.1,0.5,1,2,5,10,30]); R=t/(1.1*C); }while(R<1e3||R>5e6);
    return {q:`A 555 monostable must give a ${f(t,"s")} pulse with a ${f(C,"F")} timing capacitor. Calculate R, then enter the nearest standard E12 or E24 value.`, ans:R, unit:"Ω", std:true,
      steps:[`t = 1.1 · R · C, so R = t / (1.1 · C).`,`R = ${f(t,"s")} / (1.1 × ${f(C,"F")}) = ${f(R,"Ω")}.`,`${std(R)}.`,`With the E24 value the pulse lasts 1.1 × ${f(BC.nearestE(R,24),"Ω")} × ${f(C,"F")} = ${f(1.1*BC.nearestE(R,24)*C,"s")}.`]}; }
+],
+11:[
+ ()=>{ const fi=pick([32768,1e6,2e6,4e6,8e6,10e6,16e6]); let n,fo; do{ n=pick([3,4,5,6,8,10,12]); fo=fi/Math.pow(2,n); }while(fo<1||fo>2e6);
+   return {q:`A binary counter with ${n} stages is clocked at ${f(fi,"Hz")}. At what frequency does its last stage toggle, in hertz?`, ans:fo, unit:"Hz",
+     steps:[`Each stage divides by 2, so ${n} stages divide by 2^${n} = ${Math.pow(2,n)}.`,`f = ${f(fi,"Hz")} / ${Math.pow(2,n)} = ${f(fo,"Hz")}.`,`The first stage runs at ${f(fi/2,"Hz")}. Each later stage runs at half the rate of the one before it.`]}; },
+ ()=>{ const hi=pick([true,false]); let a,b; if(hi){ do{ a=pick([2.4,2.7,2.9,3.0,3.8,4.4,4.9]); b=pick([2.0,2.31,3.15,3.5]); }while(a-b<0.2); } else { do{ a=pick([0.1,0.2,0.4,0.5]); b=pick([0.8,0.99,1.35,1.5]); }while(b-a<0.3); }
+   const nm=hi?a-b:b-a;
+   return hi?{q:`A driver guarantees VOH ≥ ${f(a,"V")} and the receiver needs VIH ≥ ${f(b,"V")} to read a 1. What is the high-state noise margin, in volts?`, ans:nm, unit:"V",
+     steps:[`NMH = VOH − VIH.`,`NMH = ${f(a,"V")} − ${f(b,"V")} = ${f(nm,"V")}.`,`A spike on the line that pulls the level down by less than ${f(nm,"V")} cannot turn a guaranteed 1 into the forbidden zone.`]}
+   :{q:`A driver guarantees VOL ≤ ${f(a,"V")} and the receiver reads a 0 only below VIL ≤ ${f(b,"V")}. What is the low-state noise margin, in volts?`, ans:nm, unit:"V",
+     steps:[`NML = VIL − VOL.`,`NML = ${f(b,"V")} − ${f(a,"V")} = ${f(nm,"V")}.`,`A spike on the line that pushes the level up by less than ${f(nm,"V")} cannot turn a guaranteed 0 into the forbidden zone.`]}; },
+ ()=>{ const N=pick([3,5,7,9,11]), t=pick([5,8,10,12,15,20])*1e-9, T=2*N*t, fr=1/T;
+   return {q:`A ring oscillator is ${N} inverters in a loop, each with a propagation delay of ${f(t,"s")}. What is its oscillation frequency, in hertz?`, ans:fr, unit:"Hz",
+     steps:[`An edge must travel around the ring twice per cycle, once to flip the output and once to flip it back.`,`T = 2 · N · tpd = 2 × ${N} × ${f(t,"s")} = ${f(T,"s")}.`,`f = 1 / T = 1 / ${f(T,"s")} = ${f(fr,"Hz")}.`,`An odd number of inverters is needed so that the loop has no stable state.`]}; },
+ ()=>{ const v=16+Math.floor(Math.random()*240), h=v>>4, l=v&15, H=h.toString(16).toUpperCase(), L=l.toString(16).toUpperCase(), b=v.toString(2).padStart(8,"0");
+   return {q:`What is the decimal value of the byte 0x${H}${L}?`, ans:v, unit:"decimal", tol:0,
+     steps:[`Each hex digit is four bits. 0x${H} = ${h} and 0x${L} = ${l}.`,`Value = ${h} × 16 + ${l} = ${h*16} + ${l} = ${v}.`,`Check in binary: ${b.slice(0,4)} ${b.slice(4)}.`]}; }
+],
+12:[
+ ()=>{ const n=pick([8,10,12,16]), V=pick([1.1,2.5,3.3,5]), s=Math.pow(2,n), q=V/s;
+   return {q:`${n===8?"An":"A"} ${n}-bit ADC uses a ${f(V,"V")} reference. What is the size of one step (1 LSB), in volts?`, ans:q, unit:"V",
+     steps:[`The range is split into 2^${n} = ${s} steps.`,`LSB = Vref / 2ⁿ = ${f(V,"V")} / ${s} = ${f(q,"V")}.`,`Rounding to the nearest step causes an error of up to ±½ LSB = ±${f(q/2,"V")}.`]}; },
+ ()=>{ const n=pick([10,12]), V=pick([3.3,5]), s=Math.pow(2,n); const code=Math.round(s*(0.1+0.8*Math.random())), v=code/s*V;
+   return {q:`A ${n}-bit ADC with a ${f(V,"V")} reference returns the code ${code}. Estimate the input voltage, in volts.`, ans:v, unit:"V",
+     steps:[`Vin ≈ code / 2ⁿ × Vref.`,`Vin = ${code} / ${s} × ${f(V,"V")} = ${f(v,"V")}.`,`One step is ${f(V/s,"V")}, so the true input is within about ${f(V/s,"V")} of this value.`]}; },
+ ()=>{ const V=pick([3.3,5]), mode=pick([["standard-mode",1000e-9],["fast-mode",300e-9]]), C=(mode[0]==="standard-mode"?pick([100,200,300,400]):pick([30,50,80,100]))*1e-12, R=mode[1]/(0.85*C), Rm=(V-0.4)/3e-3, lo=BC.e12Down(R);
+   return {q:`An I²C bus on ${f(V,"V")} has ${f(C,"F")} of capacitance. For ${mode[0]} the rise time (30% to 70%) must be at most ${f(mode[1],"s")}. Calculate the largest pull-up resistor that meets it, then enter the nearest standard E12 or E24 value.`, ans:R, unit:"Ω", std:true,
+     steps:[`Rise time: t = 0.85 · R · C, so R = t / (0.85 · C).`,`R = ${f(mode[1],"s")} / (0.85 × ${f(C,"F")}) = ${f(R,"Ω")}.`,`${std(R)}. Because this is a limit, round down to ${f(lo,"Ω")} if you need to guarantee the rise time.`,`The sink-current floor is (Vcc − 0.4 V) / 3 mA = ${f(Rm,"Ω")}, and this result is above it.`]}; },
+ ()=>{ const T=pick([0,10,20,40,50,60,70,80]), V=pick([3.3,5]), Rt=1e4*Math.exp(3950*(1/(T+273.15)-1/298.15)), v=V*1e4/(Rt+1e4);
+   return {q:`A 10 kΩ NTC thermistor (B = 3950, 10 kΩ at 25 °C) is on the top of a divider with a fixed 10 kΩ resistor to ground, on a ${f(V,"V")} supply. At ${T} °C, what is the output voltage, in volts?`, ans:v, unit:"V",
+     steps:[`R(T) = R₀ · e^(B · (1/T − 1/T₀)), with T = ${+(T+273.15).toFixed(2)} K and T₀ = 298.15 K.`,`R = 10 kΩ × e^(3950 × (1/${+(T+273.15).toFixed(2)} − 1/298.15)) = ${f(Rt,"Ω")}.`,`Vout = ${f(V,"V")} × 10 kΩ / (${f(Rt,"Ω")} + 10 kΩ) = ${f(v,"V")}.`,`With 10 bits that is a code of about ${Math.round(v/V*1024)}.`]}; }
+],
+13:[
+ ()=>{ const V=pick([3,6,9,12,24]); let R,I; do{ R=pick([1,1.5,2.2,3,4.7,6.8,10,15]); I=V/R; }while(I<0.4||I>10);
+   return {q:`A ${f(V,"V")} brushed DC motor has a winding resistance of ${f(R,"Ω")}. What current does it draw when it is stalled, in amps?`, ans:I, unit:"A",
+     steps:[`At stall there is no back-EMF, so only the winding resistance limits the current: I = V / R.`,`I = ${f(V,"V")} / ${f(R,"Ω")} = ${f(I,"A")}.`,`The winding dissipates ${f(V*I,"W")} while stalled, so the driver, the supply and the motor must survive that.`]}; },
+ ()=>{ const a=pick([0,15,30,45,60,90,120,135,150,170,180]), t=(1+a/180)*1e-3;
+   return {q:`A hobby servo maps a 1 ms pulse to 0°, 1.5 ms to 90° and 2 ms to 180°, in a straight line. What pulse width commands ${a}°, in seconds?`, ans:t, unit:"s",
+     steps:[`Pulse = 1 ms + angle × (1 ms / 180°).`,`Pulse = 1 ms + ${a}° × 0.00556 ms/° = ${+(1+a/180).toPrecision(4)} ms.`,`That is ${f(t,"s")}. In a 20 ms frame, the duty cycle is ${+(t/20e-3*100).toPrecision(3)}%.`]}; },
+ ()=>{ let rpm,ang,mic,rate; do{ rpm=pick([30,60,120,150,300,600]); ang=pick([1.8,0.9,7.5]); mic=pick([1,2,4,8,16]); rate=rpm/60*(360/ang)*mic; }while(rate>40000||rate<20);
+   return {q:`A stepper with a ${ang}° step angle runs at ${rpm} rpm on a driver set to 1/${mic} microstepping. What step-pulse rate does the driver need, in hertz?`, ans:rate, unit:"Hz",
+     steps:[`Full steps per revolution: 360° / ${ang}° = ${360/ang}. With 1/${mic} microstepping that is ${360/ang} × ${mic} = ${360/ang*mic} pulses per revolution.`,`Revolutions per second: ${rpm} rpm / 60 = ${+(rpm/60).toPrecision(3)}.`,`Rate = ${+(rpm/60).toPrecision(3)} × ${360/ang*mic} = ${f(rate,"Hz")}, which is ${f(1/rate,"s")} between pulses.`]}; },
+ ()=>{ const V=pick([6,12,24]), R=pick([1,1.5,2.2,3,4.7]), Is=V/R, I=+(Is*pick([0.1,0.15,0.2,0.25,0.3])).toPrecision(2), E=V-I*R;
+   return {q:`A ${f(V,"V")} DC motor has ${f(R,"Ω")} of winding resistance and draws ${f(I,"A")} at its running speed. What is its back-EMF, in volts?`, ans:E, unit:"V",
+     steps:[`The winding drops I · R = ${f(I,"A")} × ${f(R,"Ω")} = ${f(I*R,"V")}.`,`The back-EMF is what is left: E = V − I · R = ${f(V,"V")} − ${f(I*R,"V")} = ${f(E,"V")}.`,`Stall current for comparison: V / R = ${f(Is,"A")}, which is ${+(Is/I).toPrecision(2)} times the running current.`]}; }
+],
+14:[
+ ()=>{ const w=pick([["sine",Math.SQRT2,"A sine wave"],["triangle",Math.sqrt(3),"A triangle wave"],["square",1,"A square wave"]]), Vp=pick([1,2,3.3,5,9,12,15,24]), r=Vp/w[1];
+   return {q:`${w[2]} swings between −${f(Vp,"V")} and +${f(Vp,"V")}. What is its RMS value, in volts?`, ans:r, unit:"V",
+     steps:[w[0]==="sine"?`For a sine wave, Vrms = Vpeak / √2.`:w[0]==="triangle"?`For a triangle wave, Vrms = Vpeak / √3.`:`For a square wave that swings symmetrically, Vrms = Vpeak, because the square of the voltage is constant.`,`Vrms = ${f(Vp,"V")} / ${+w[1].toPrecision(4)} = ${f(r,"V")}.`,`Into 8 Ω, that delivers ${f(r*r/8,"W")}.`]}; },
+ ()=>{ let cap,v,f0,X,L,u; do{ cap=pick([true,false]); f0=pick([50,60,100,440,1e3,10e3,100e3]); v=cap?pick([1e-9,10e-9,100e-9,1e-6,10e-6,100e-6]):pick([10e-6,100e-6,1e-3,10e-3,100e-3,1]); X=cap?1/(2*Math.PI*f0*v):2*Math.PI*f0*v; }while(X<0.1||X>1e7);
+   return {q:`What is the reactance of a ${f(v,cap?"F":"H")} ${cap?"capacitor":"inductor"} at ${f(f0,"Hz")}, in ohms?`, ans:X, unit:"Ω",
+     steps:[cap?`Xc = 1 / (2π · f · C).`:`XL = 2π · f · L.`,cap?`Xc = 1 / (2π × ${f(f0,"Hz")} × ${f(v,"F")}) = 1 / ${f(2*Math.PI*f0*v,"S")} = ${f(X,"Ω")}.`:`XL = 2π × ${f(f0,"Hz")} × ${f(v,"H")} = ${f(X,"Ω")}.`,cap?`At ten times the frequency it would be ${f(X/10,"Ω")}. A capacitor passes high frequencies more easily.`:`At ten times the frequency it would be ${f(X*10,"Ω")}. An inductor passes low frequencies more easily.`]}; },
+ ()=>{ let vi,g,vo; do{ vi=pick([1,2,5,10,20,50,100])*1e-3; g=pick([6,10,14,20,26,34,40,46,60]); vo=vi*Math.pow(10,g/20); }while(vo>12||vo<0.05);
+   return {q:`An amplifier with ${g} dB of voltage gain has a ${f(vi,"V")} RMS signal at its input. What is the RMS output voltage, in volts?`, ans:vo, unit:"V",
+     steps:[`Voltage ratio = 10^(dB / 20) = 10^(${g} / 20) = ${+Math.pow(10,g/20).toPrecision(4)}.`,`Vout = ${f(vi,"V")} × ${+Math.pow(10,g/20).toPrecision(4)} = ${f(vo,"V")}.`,`Check: the power ratio is 10^(${g}/10) = ${+Math.pow(10,g/10).toPrecision(3)}, if the impedances are the same.`]}; },
+ ()=>{ const L=pick([10e-6,100e-6,470e-6,1e-3,4.7e-3,10e-3,47e-3,100e-3]), C=pick([1e-9,4.7e-9,10e-9,47e-9,100e-9,1e-6]), fr=1/(2*Math.PI*Math.sqrt(L*C));
+   return {q:`A ${f(L,"H")} inductor and a ${f(C,"F")} capacitor form an LC circuit. What is its resonant frequency, in hertz?`, ans:fr, unit:"Hz",
+     steps:[`f₀ = 1 / (2π√(L · C)).`,`√(L · C) = √(${f(L,"H")} × ${f(C,"F")}) = ${f(Math.sqrt(L*C),"s")}.`,`f₀ = 1 / (2π × ${f(Math.sqrt(L*C),"s")}) = ${f(fr,"Hz")}.`,`At this frequency the two reactances are equal: ${f(2*Math.PI*fr*L,"Ω")}.`]}; }
+],
+15:[
+ ()=>{ const Ri=rE(1000,10000); let G,Rf; do{ G=pick([2,3,5,6,10,11,20,50,100]); Rf=(G-1)*Ri; }while(Rf>1e6||Rf<1000);
+   return {q:`A non-inverting op amp stage needs a gain of ${G} with Rin = ${f(Ri,"Ω")}. Calculate Rf, then enter the nearest standard E12 or E24 value.`, ans:Rf, unit:"Ω", std:true,
+     steps:[`G = 1 + Rf / Rin, so Rf = (G − 1) · Rin.`,`Rf = (${G} − 1) × ${f(Ri,"Ω")} = ${f(Rf,"Ω")}.`,`${std(Rf)}.`,`With the E24 value the gain becomes 1 + ${f(BC.nearestE(Rf,24),"Ω")} / ${f(Ri,"Ω")} = ${+(1+BC.nearestE(Rf,24)/Ri).toPrecision(3)}.`]}; },
+ ()=>{ let Ri,Rf,vin,vs,G,vo; do{ Ri=rE(1000,22000); Rf=rE(1000,220000); vin=pick([0.05,0.1,0.2,0.5,1,1.2]); vs=pick([5,9,12,15]); G=Rf/Ri; vo=G*vin; }while(vo>vs-1.5||vo<0.1);
+   return {q:`An inverting amplifier has Rin = ${f(Ri,"Ω")} and Rf = ${f(Rf,"Ω")}, on ±${vs} V rails. The input is −${f(vin,"V")} (a DC level). What is the output voltage, in volts?`, ans:vo, unit:"V",
+     steps:[`Inverting gain: G = −Rf / Rin = −${f(Rf,"Ω")} / ${f(Ri,"Ω")} = −${+G.toPrecision(3)}.`,`Vout = G × Vin = −${+G.toPrecision(3)} × (−${f(vin,"V")}) = +${f(vo,"V")}.`,`That is inside the rails (about ±${vs-1.5} V for a part that stops 1.5 V short), so the output does not clip.`]}; },
+ ()=>{ let R1,R2,Rf,v1,v2,vo; do{ R1=rE(1000,22000); R2=rE(1000,22000); Rf=rE(2000,47000); v1=pick([0.2,0.5,1,1.5,2]); v2=pick([0.2,0.5,1,1.5,2]); vo=Rf*(v1/R1+v2/R2); }while(vo>8||vo<0.3);
+   return {q:`An inverting summing amplifier has inputs of −${f(v1,"V")} through ${f(R1,"Ω")} and −${f(v2,"V")} through ${f(R2,"Ω")}, with Rf = ${f(Rf,"Ω")}. What is the output voltage, in volts?`, ans:vo, unit:"V",
+     steps:[`Vout = −Rf · (V₁ / R₁ + V₂ / R₂), with the input voltages −${f(v1,"V")} and −${f(v2,"V")}.`,`Currents into the summing node: ${f(v1/R1,"A")} + ${f(v2/R2,"A")} = ${f(v1/R1+v2/R2,"A")}.`,`Vout = ${f(Rf,"Ω")} × ${f(v1/R1+v2/R2,"A")} = +${f(vo,"V")}. The inverting stage flips the sign of the negative sum.`]}; },
+ ()=>{ const gbw=pick([1e6,3e6,4e6,8e6,10e6,20e6]), G=pick([2,5,10,20,50,100,200]), bw=gbw/G;
+   return {q:`A non-inverting amplifier with a gain of ${G} uses an op amp with a gain-bandwidth product of ${f(gbw,"Hz")}. What is the −3 dB bandwidth of the stage, in hertz?`, ans:bw, unit:"Hz",
+     steps:[`With feedback, bandwidth ≈ GBW / G.`,`BW = ${f(gbw,"Hz")} / ${G} = ${f(bw,"Hz")}.`,`${bw<20000?"That is below the 20 kHz audio band, so this part is too slow. Split the gain over two stages or choose a faster op amp.":"That covers the 20 kHz audio band."}`]}; }
+],
+16:[
+ ()=>{ let R,C,fr; do{ R=rE(100,1e6); C=pick([1e-9,4.7e-9,10e-9,47e-9,100e-9,470e-9,1e-6]); fr=1/(2*Math.PI*R*C); }while(fr<1||fr>2e5);
+   return {q:`An RC filter has R = ${f(R,"Ω")} and C = ${f(C,"F")}. What is its cutoff frequency, in hertz?`, ans:fr, unit:"Hz",
+     steps:[`fc = 1 / (2π · R · C).`,`R · C = ${f(R,"Ω")} × ${f(C,"F")} = ${f(R*C,"s")}.`,`fc = 1 / (2π × ${f(R*C,"s")}) = ${f(fr,"Hz")}.`,`At fc the output is −3 dB, 70.7% of the input.`]}; },
+ ()=>{ let C,fr,R; do{ C=pick([1e-9,4.7e-9,10e-9,47e-9,100e-9,470e-9,1e-6]); fr=pick([50,100,200,500,1e3,2e3,5e3,10e3]); R=1/(2*Math.PI*fr*C); }while(R<100||R>1e6);
+   return {q:`A low-pass filter with a ${f(C,"F")} capacitor must have a cutoff of ${f(fr,"Hz")}. Calculate R, then enter the nearest standard E12 or E24 value.`, ans:R, unit:"Ω", std:true,
+     steps:[`R = 1 / (2π · fc · C).`,`R = 1 / (2π × ${f(fr,"Hz")} × ${f(C,"F")}) = ${f(R,"Ω")}.`,`${std(R)}.`,`With the E24 value, fc = 1 / (2π × ${f(BC.nearestE(R,24),"Ω")} × ${f(C,"F")}) = ${f(1/(2*Math.PI*BC.nearestE(R,24)*C),"Hz")}.`]}; },
+ ()=>{ const lp=pick([true,false]), fc=pick([100,500,1e3,2e3,5e3,10e3]), k=pick([0.2,0.5,2,3,5,10]), fx=fc*k, Vi=pick([1,2,5,10]), H=lp?1/Math.sqrt(1+k*k):k/Math.sqrt(1+k*k), vo=Vi*H;
+   return {q:`A first-order ${lp?"low-pass":"high-pass"} filter has fc = ${f(fc,"Hz")}. A ${f(Vi,"V")} peak sine at ${f(fx,"Hz")} enters it. What is the peak output voltage, in volts?`, ans:vo, unit:"V",
+     steps:[`f / fc = ${f(fx,"Hz")} / ${f(fc,"Hz")} = ${k}.`,lp?`Low-pass: |H| = 1 / √(1 + (f/fc)²) = 1 / √(1 + ${k*k}) = ${+H.toPrecision(3)}.`:`High-pass: |H| = (f/fc) / √(1 + (f/fc)²) = ${k} / √(1 + ${k*k}) = ${+H.toPrecision(3)}.`,`Vout = ${f(Vi,"V")} × ${+H.toPrecision(3)} = ${f(vo,"V")}, which is ${String(+(20*Math.log10(H)).toPrecision(3)).replace("-","−")} dB.`]}; },
+ ()=>{ let R,fl,C; do{ R=rE(1000,1e6); fl=pick([10,20,50,100]); C=1/(2*Math.PI*fl*R); }while(C<1e-10||C>1e-4);
+   return {q:`An audio input has an input impedance of ${f(R,"Ω")}. A series coupling capacitor must pass signals down to ${f(fl,"Hz")} (the −3 dB point). Calculate C, then enter the nearest standard E12 or E24 value.`, ans:C, unit:"F", std:true,
+     steps:[`The capacitor and the input impedance form a high-pass filter: fc = 1 / (2π · R · C), so C = 1 / (2π · R · fc).`,`C = 1 / (2π × ${f(R,"Ω")} × ${f(fl,"Hz")}) = ${f(C,"F")}.`,`${std(C,"F")}.`,`With the E24 value, fc = 1 / (2π × ${f(R,"Ω")} × ${f(BC.nearestE(C,24),"F")}) = ${f(1/(2*Math.PI*R*BC.nearestE(C,24)),"Hz")}.`]}; }
+],
+17:[
+ ()=>{ const fr=pick([20,50,100,200,440,1e3,2e3,5e3,10e3,20e3]), l=343/fr;
+   return {q:`What is the wavelength of a ${f(fr,"Hz")} tone in air, with the speed of sound at 343 m/s, in metres?`, ans:l, unit:"m",
+     steps:[`λ = v / f.`,`λ = 343 m/s / ${f(fr,"Hz")} = ${f(l,"m")}.`,`Long wavelengths bend around obstacles easily. This is why bass is hard to localise and why a woofer needs a large enclosure.`]}; },
+ ()=>{ const Vp=pick([2,5,8,10,13,20]), R=pick([4,6,8]), P=Vp*Vp/(2*R);
+   return {q:`An amplifier drives a sine wave of ${f(Vp,"V")} peak into a ${f(R,"Ω")} speaker. What average power does the speaker receive, in watts?`, ans:P, unit:"W",
+     steps:[`Convert to RMS: Vrms = Vpeak / √2 = ${f(Vp,"V")} / 1.414 = ${f(Vp/Math.SQRT2,"V")}.`,`P = Vrms² / R = (${f(Vp/Math.SQRT2,"V")})² / ${f(R,"Ω")} = ${f(P,"W")}.`,`Peak current: ${f(Vp,"V")} / ${f(R,"Ω")} = ${f(Vp/R,"A")}.`]}; },
+ ()=>{ const fs=pick([8000,22050,44100,48000]), fx=Math.round(fs*(0.55+0.4*Math.random())/100)*100, al=fs-fx;
+   return {q:`A signal is sampled at ${f(fs,"Hz",4)} with no anti-aliasing filter, and it contains a ${f(fx,"Hz",4)} tone. At what frequency does the tone appear in the samples, in hertz?`, ans:al, unit:"Hz",
+     steps:[`The Nyquist frequency is fs / 2 = ${f(fs/2,"Hz",4)}. The tone is above it, so it folds back.`,`f_alias = |f − fs| = |${f(fx,"Hz",4)} − ${f(fs,"Hz",4)}| = ${f(al,"Hz",4)}.`,`Once sampled, it is indistinguishable from a real ${f(al,"Hz",4)} tone. The filter has to remove it before the converter.`]}; },
+ ()=>{ const fc=pick([2000,2500,3000,3500,4000,5000]), R=pick([4,6,8]), C=1/(2*Math.PI*fc*R);
+   return {q:`A first-order crossover puts a series capacitor in front of a ${f(R,"Ω")} tweeter, with a −3 dB point at ${f(fc,"Hz")}. Calculate C, then enter the nearest standard E12 or E24 value.`, ans:C, unit:"F", std:true,
+     steps:[`The capacitor and the tweeter form a high-pass filter: fc = 1 / (2π · R · C), so C = 1 / (2π · R · fc).`,`C = 1 / (2π × ${f(R,"Ω")} × ${f(fc,"Hz")}) = ${f(C,"F")}.`,`${std(C,"F")}.`,`The real impedance of a tweeter varies with frequency, so the actual corner will differ from the nominal figure.`]}; }
 ]
+
 };
 BC.PROBLEMS=T;
 
