@@ -956,6 +956,293 @@ L.truesize={title:"True size",sub:"packages at 1 : 1 on your screen",html:()=>{ 
   card.innerHTML=`<rect class="card" x="0" y="0" width="${cwmm}" height="${chmm}" rx="3.18"/><text class="rt" x="${cwmm/2}" y="${chmm/2}" text-anchor="middle">85.6 × 54 mm</text>`;
  }};
 
+/* ================= CH21-22: layout and manufacturing ================= */
+/* PCB kit, millimetres. A shape is {l: layer, k: kind, ...}. Layers: F.Cu, B.Cu, F.Mask (openings), F.Paste, F.Silkscreen, Edge.Cuts, Drill, NPTH, Rats.
+   Kinds: r rect {x,y,w,h,rx}, c circle {x,y,r}, t track {pts,w}, p filled path {d} (even-odd), o outline rect {x,y,w,h,rx}, s text {x,y,s,z,a}. */
+const PB=(()=>{
+  const n=v=>+(+v).toFixed(3);
+  const pad=(x,y,w,h,o={})=>{ const r=[{l:"F.Cu",k:"r",x:x-w/2,y:y-h/2,w,h,rx:o.rx??Math.min(w,h)*0.2}];
+    if(!o.nomask) r.push({l:"F.Mask",k:"r",x:x-w/2-0.05,y:y-h/2-0.05,w:w+0.1,h:h+0.1,rx:o.rx??Math.min(w,h)*0.2});
+    if(!o.nopaste) r.push({l:"F.Paste",k:"r",x:x-w/2,y:y-h/2,w,h,rx:o.rx??Math.min(w,h)*0.2}); return r; };
+  const tht=(x,y,d,dr,sq)=>{ const cu=l=>sq?{l,k:"r",x:x-d/2,y:y-d/2,w:d,h:d,rx:0}:{l,k:"c",x,y,r:d/2};
+    return [cu("F.Cu"),cu("B.Cu"),Object.assign(cu("F.Mask"),sq?{x:x-d/2-0.05,y:y-d/2-0.05,w:d+0.1,h:d+0.1}:{r:d/2+0.05}),{l:"Drill",k:"c",x,y,r:dr/2}]; };
+  const via=(x,y,d=0.6,dr=0.3)=>[{l:"F.Cu",k:"c",x,y,r:d/2},{l:"B.Cu",k:"c",x,y,r:d/2},{l:"Drill",k:"c",x,y,r:dr/2}];
+  const trk=(pts,w,l="F.Cu")=>({l,k:"t",pts,w});
+  const txt=(x,y,s,z=0.8,a="middle")=>({l:"F.Silkscreen",k:"s",x,y,s,z,a});
+  const sl=(pts,w=0.15)=>({l:"F.Silkscreen",k:"t",pts,w});
+  const circ=(cx,cy,r)=>`M${n(cx-r)} ${n(cy)}a${n(r)} ${n(r)} 0 1 0 ${n(2*r)} 0a${n(r)} ${n(r)} 0 1 0 ${n(-2*r)} 0Z`;
+  const rectP=(x,y,w,h)=>`M${n(x)} ${n(y)}h${n(w)}v${n(h)}h${n(-w)}Z`;
+  /* one shape as SVG; cls on the element */
+  const geo=(s,cls)=>{ const c=cls?` class="${cls}"`:"";
+    if(s.k==="r") return `<rect${c} x="${n(s.x)}" y="${n(s.y)}" width="${n(s.w)}" height="${n(s.h)}"${s.rx?` rx="${n(s.rx)}"`:""}/>`;
+    if(s.k==="c") return `<circle${c} cx="${n(s.x)}" cy="${n(s.y)}" r="${n(s.r)}"/>`;
+    if(s.k==="t") return `<polyline${c} points="${s.pts.map(p=>n(p[0])+","+n(p[1])).join(" ")}" stroke-width="${n(s.w)}"/>`;
+    if(s.k==="p") return `<path${c} d="${s.d}" fill-rule="evenodd"/>`;
+    if(s.k==="o") return `<rect${c} x="${n(s.x)}" y="${n(s.y)}" width="${n(s.w)}" height="${n(s.h)}"${s.rx?` rx="${n(s.rx)}"`:""}/>`;
+    if(s.k==="s") return `<text${c} x="${n(s.x)}" y="${n(s.y)}" font-size="${n(s.z)}" text-anchor="${s.a}">${esc(s.s)}</text>`;
+    return ""; };
+  const of=(S,l)=>S.filter(s=>s.l===l);
+  /* the board as made: green mask over copper, exposed copper only inside mask openings */
+  const stack=(S,id)=>{ const ed=of(S,"Edge.Cuts")[0], open=of(S,"F.Mask");
+    const cu=of(S,"F.Cu"), fill=s=>s.k==="t"?"pcT":"pcF";
+    return `<defs><clipPath id="${id}-m">${open.map(s=>geo(s)).join("")}</clipPath></defs>`
+      +geo(Object.assign({},ed,{k:"r"}),"pcBoard")
+      +of(S,"B.Cu").map(s=>geo(s,"pcB "+fill(s))).join("")
+      +open.map(s=>geo(s,"pcOpen")).join("")
+      +cu.map(s=>geo(s,"pcCu "+fill(s))).join("")
+      +`<g clip-path="url(#${id}-m)">${cu.map(s=>geo(s,"pcLit "+fill(s))).join("")}</g>`
+      +of(S,"Drill").concat(of(S,"NPTH")).map(s=>geo(s,"pcHole")).join("")
+      +of(S,"F.Silkscreen").map(s=>geo(s,"pcSilk "+(s.k==="t"?"pcT":"pcF"))).join("")
+      +geo(ed,"pcEdge")+of(S,"Rats").map(s=>geo(s,"pcRat")).join(""); };
+  /* one layer as its Gerber or drill file shows it: dark shapes on a light sheet */
+  const layer=(S,l)=>{ const ls=l==="Drill"?of(S,"Drill").concat(of(S,"NPTH")):of(S,l);
+    return ls.map(s=>geo(s,"gbS "+(s.k==="t"?"pcT":s.k==="o"?"gbO":"pcF"))).join(""); };
+  return {pad,tht,via,trk,txt,sl,circ,rectP,geo,stack,layer};
+})();
+
+/* ---- Trace width (IPC-2221) ---- */
+const ipcArea=(I,dT,k)=>Math.pow(I/(k*Math.pow(dT,0.44)),1/0.725);   /* mil² */
+L.tracew={title:"Trace width",sub:"IPC-2221 calculator, drawn to scale",html:()=>`
+  <div class="ctrls">${rng("tw-i","Current",0.1,10,0.05,1)}${rng("tw-t","Allowed temperature rise",5,60,1,10)}
+   <div class="row2">${sel("tw-oz","Copper weight",[["0.5","0.5 oz (18 µm)"],["1","1 oz (35 µm)"],["2","2 oz (70 µm)"]],"1")}${sel("tw-l","Layer",[["ext","Outer (F.Cu, B.Cu)"],["int","Inner"]],"ext")}</div>
+   <p class="note">IPC-2221 is a curve fit to old, conservative charts. The newer IPC-2152 also counts board thickness and nearby planes, and finds inner layers run about as cool as outer ones.</p></div>
+  <div class="readout">${ro("Width","tw-w",1)}${ro("Width, mil","tw-m")}${ro("Cross-section","tw-a")}${ro("Resistance per 10 mm","tw-r")}${ro("Heat per 10 mm","tw-p")}<p class="note" id="tw-n"></p></div>
+  <div class="twWrap"><svg id="tw-sv" role="img"></svg><p class="label" id="tw-g">grid 0.1 mm · heavy lines 1 mm · upper trace 0.2 mm for comparison</p></div>`,
+ run(){ const I=+$("#tw-i").value, dT=+$("#tw-t").value, oz=+$("#tw-oz").value, ext=$("#tw-l").value==="ext", k=ext?0.048:0.024;
+  out("tw-i",fmt(I,"A")); out("tw-t",dT+" °C");
+  const A=ipcArea(I,dT,k), mil=A/(1.378*oz), w=mil*0.0254, t=0.035*oz, R=1.72e-8*0.01/(w*1e-3*t*1e-3);
+  setT("tw-w",`${+w.toPrecision(3)} mm`); setT("tw-m",`${+mil.toPrecision(3)} mil`); setT("tw-a",`${+A.toPrecision(3)} mil² · ${+(w*t).toPrecision(2)} mm²`);
+  setT("tw-r",fmt(R,"Ω")); setT("tw-p",fmt(I*I*R,"W"));
+  note("tw-n",w<0.127?`Narrower than a typical 0.127 mm fab minimum. Draw it at 0.15 to 0.2 mm; heat is not the limit here.`:w>3?`Over 3 mm: use a copper pour, a heavier copper weight or the same net on two layers.`:`Round up to a tidy value. The trace's resistance drops ${fmt(I*R,"V")} per 10 mm at this current.`,w<0.127||w>3?"warn":"");
+  /* to scale: viewBox in mm */
+  const H=Math.max(1.2,Math.ceil((w+0.9)*10)/10), W=+(H*2.6).toFixed(1), y0=H*0.62, sv=$("#tw-sv");
+  const st=W>40?10:1; let g=""; for(let i=0;i<=Math.round(W*10);i+=st) g+=`<path class="${i%10?"twg":"twG"}" d="M${(i/10).toFixed(1)} 0V${H}"/>`;
+  for(let j=0;j<=Math.round(H*10);j+=st) g+=`<path class="${j%10?"twg":"twG"}" d="M0 ${(j/10).toFixed(1)}H${W}"/>`;
+  const ry=Math.min(0.35,y0-w/2-0.15), fs=H*0.075;
+  g+=`<rect class="twCu" x="0" y="${(ry-0.1).toFixed(3)}" width="${W}" height="0.2"/>`;
+  g+=`<rect class="twCu hl" x="0" y="${(y0-w/2).toFixed(4)}" width="${W}" height="${w.toFixed(4)}"/>`;
+  const dx=W*0.9; g+=`<path class="twD" d="M${dx} ${(y0-w/2).toFixed(4)}V${(y0+w/2).toFixed(4)}M${dx-fs*0.5} ${(y0-w/2).toFixed(4)}h${fs}M${dx-fs*0.5} ${(y0+w/2).toFixed(4)}h${fs}"/>`;
+  g+=`<text class="twT" x="${(dx-fs*0.8).toFixed(3)}" y="${(y0+w/2+fs*1.3).toFixed(3)}" font-size="${fs.toFixed(3)}" text-anchor="end">${+w.toPrecision(3)} mm</text>`;
+  setT("tw-g",st>1?"grid 1 mm · upper trace 0.2 mm for comparison":"grid 0.1 mm · heavy lines 1 mm · upper trace 0.2 mm for comparison");
+  sv.setAttribute("viewBox",`0 0 ${W} ${H}`); sv.setAttribute("aria-label",`A ${+w.toPrecision(3)} mm trace drawn to scale on a 0.1 mm grid, next to a 0.2 mm signal trace`); sv.innerHTML=g; }};
+
+/* ---- Decoupling loop ---- */
+/* Geometry in mm. The loop is unrolled into a rectangle: path length ℓ on the top layer by height h to the plane.
+   By the image method a trace over a plane has half the inductance of a two-wire rectangle ℓ × 2h (rectangular-loop formula, round-wire equivalent radius). */
+const DC=(()=>{
+  const mu=4e-7*Math.PI, ash=Math.asinh;
+  const rectL=(a,b,r)=>{ a*=1e-3; b*=1e-3; r*=1e-3; const d=Math.hypot(a,b); return mu/Math.PI*(a*Math.log(2*a/r)+b*Math.log(2*b/r)+2*d-a*ash(a/b)-b*ash(b/a)-2*(a+b)); };
+  const IC={x0:11.8,x1:15.6,y0:1.2,y1:8.8}, PX=10.95, PW=1.5, PH=0.6, PY=[2.46,3.73,5.0,6.27,7.54], VDD=[PX,3.73], GND=[PX,5.0], GV=[9.6,5.0];
+  const CAP={L:1.0,pw:0.55,ph:0.62}, VIA=0.3, CLR=0.15, R_EQ=0.075;   /* 0402 pads at ±0.5 mm; via pad radius; clearance; 0.3 mm trace */
+  const dir=r=>[[1,0],[0,-1],[-1,0],[0,1]][r];   /* where pad 1 points: right, up, left, down */
+  const pads=s=>{ const d=dir(s.r), h=CAP.L/2; return [[s.cx+d[0]*h,s.cy+d[1]*h],[s.cx-d[0]*h,s.cy-d[1]*h]]; };
+  const padBox=(p,r)=>{ const w=r%2?CAP.ph:CAP.pw, h=r%2?CAP.pw:CAP.ph; return [p[0]-w/2,p[1]-h/2,w,h]; };
+  const boxD=(b,x,y)=>{ const dx=Math.max(b[0]-x,0,x-(b[0]+b[2])), dy=Math.max(b[1]-y,0,y-(b[1]+b[3])); return Math.hypot(dx,dy); };
+  const boxBox=(a,b)=>Math.hypot(Math.max(0,a[0]-(b[0]+b[2]),b[0]-(a[0]+a[2])),Math.max(0,a[1]-(b[1]+b[3]),b[1]-(a[1]+a[3])));
+  const fixedBoxes=PY.map(y=>[PX-PW/2,y-PH/2,PW,PH]).concat([[IC.x0,IC.y0,IC.x1-IC.x0,IC.y1-IC.y0],[GV[0],GND[1]-0.15,PX-PW/2-GV[0],0.3]]);
+  const ok=s=>{ const P=pads(s), B=P.map(p=>padBox(p,s.r)), v=[s.vx,s.vy];
+    if(B.some(b=>b[0]<0.4||b[1]<0.4||b[0]+b[2]>15.6||b[1]+b[3]>9.6)) return false;
+    if(v[0]<0.7||v[1]<0.7||v[0]>15.3||v[1]>9.3) return false;
+    if(B.some(b=>fixedBoxes.some(f=>boxBox(b,f)<CLR)||boxD(b,GV[0],GV[1])<VIA+CLR)) return false;
+    if(fixedBoxes.some(f=>boxD(f,v[0],v[1])<VIA+CLR)||Math.hypot(v[0]-GV[0],v[1]-GV[1])<2*VIA+CLR) return false;
+    if(B.some(b=>boxD(b,v[0],v[1])<VIA+0.1)) return false;
+    return true; };
+  /* loop path on the top layer: VDD pad → C pad 1 → C pad 2 → C via, then IC GND via → GND pad → (die) → VDD pad */
+  const calc=(s,h)=>{ const P=pads(s), d=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+    const segs=[d(VDD,P[0]),CAP.L,d(P[1],[s.vx,s.vy]),d(GV,GND),d(GND,VDD)], l=segs.reduce((a,b)=>a+b,0);
+    const Lh=rectL(l,2*h,R_EQ)/2; return {P,l,A:l*h,L:Lh}; };
+  const PRE={good:{cx:9.2,cy:3.73,r:0,vx:7.9,vy:3.73,t:"At the pin"},start:{cx:3.2,cy:8.2,r:0,vx:2.0,vy:8.2,t:"Far away"},via:{cx:9.2,cy:3.73,r:0,vx:2.5,vy:1.5,t:"Via far from the pad"}};
+  return {IC,PX,PW,PH,PY,VDD,GND,GV,CAP,VIA,pads,padBox,ok,calc,PRE};
+})();
+L.decoup={title:"Decoupling loop",sub:"drag the capacitor and its via",html:()=>`
+  <div class="ctrls"><div class="gates" id="dc-pre" role="group" aria-label="Placements">${Object.entries(DC.PRE).map(([k,p])=>`<button type="button" data-p="${k}" aria-pressed="${k==="start"}">${esc(p.t)}</button>`).join("")}</div>
+   <div class="row2">${sel("dc-h","Stackup",[["0.2","4-layer, 0.2 mm"],["1.6","2-layer, 1.6 mm"]],"0.2")}${sel("dc-f","Frequency",[["1e7","10 MHz"],["1e8","100 MHz"],["5e8","500 MHz"]],"1e8")}</div>
+   <div class="row2"><button class="btn" type="button" id="dc-rot">Rotate C1</button></div>
+   <p class="note">Drag C1 or its via. With the keyboard: Tab to either, arrow keys move 0.1 mm, Shift + arrow 0.5 mm, R rotates C1. Goal: on the 4-layer stackup, get the loop under 2.5 nH.</p></div>
+  <div class="readout">${ro("Loop inductance ≈","dc-l",1)}${ro("Impedance ≈","dc-z")}${ro("Loop path ℓ","dc-p")}${ro("Loop area ℓ × h ≈","dc-a")}${ro("Resonance with 100 nF ≈","dc-r")}<p class="note" id="dc-n" aria-live="polite"></p></div>
+  <div class="dcWrap"><svg class="dcSv" id="dc-sv" viewBox="0 0 16 10" aria-label="Top view of an IC's power pins, capacitor C1, its ground via and the IC's ground via"></svg>
+   <p class="label">Approximate. Red marks the path ℓ on the top layer; the return runs in the plane directly beneath it. The loop is unrolled into a rectangle ℓ by h, the height down to the plane. By the image method that has half the inductance of a two-wire rectangle ℓ × 2h; a 0.3 mm trace counts as a 0.075 mm round wire. The capacitor's own construction, the IC package and current spreading are ignored, so compare placements rather than trusting the absolute value.</p></div>`,
+ init(root){ const self=this, sv=$("#dc-sv",root), I=DC.IC, n=v=>+v.toFixed(3);
+  self.s=Object.assign({},DC.PRE.start);
+  /* static: grid, IC, pads, IC ground via and its trace */
+  let st=`<rect class="pcBoard" x="0" y="0" width="16" height="10"/>`;
+  for(let i=1;i<16;i++) st+=`<path class="dcGrid" d="M${i} 0V10"/>`; for(let j=1;j<10;j++) st+=`<path class="dcGrid" d="M0 ${j}H16"/>`;
+  st+=`<rect class="dcChip" x="${I.x0}" y="${I.y0}" width="${n(I.x1-I.x0)}" height="${n(I.y1-I.y0)}"/><text class="dcTx" x="${n((I.x0+I.x1)/2)}" y="5.2" font-size="0.7" text-anchor="middle">U1</text>`;
+  st+=`<polyline class="dcTr" points="${DC.GND[0]},${DC.GND[1]} ${DC.GV[0]},${DC.GV[1]}" stroke-width="0.3"/>`;
+  DC.PY.forEach((y,i)=>{ st+=`<rect class="dcPad" x="${n(DC.PX-DC.PW/2)}" y="${n(y-DC.PH/2)}" width="${DC.PW}" height="${DC.PH}" rx="0.1"/>`; });
+  st+=`<text class="dcTx" x="${n(I.x0+0.25)}" y="${n(3.73+0.22)}" font-size="0.55">VDD</text><text class="dcTx" x="${n(I.x0+0.25)}" y="${n(5.0+0.22)}" font-size="0.55">GND</text>`;
+  st+=`<circle class="dcVia" cx="${DC.GV[0]}" cy="${DC.GV[1]}" r="${DC.VIA}"/><circle class="pcHole" cx="${DC.GV[0]}" cy="${DC.GV[1]}" r="0.15"/>`;
+  st+=`<path class="dcScale" d="M0.6 9.4h1M0.6 9.25v0.3M1.6 9.25v0.3"/><text class="dcTx" x="1.1" y="9.1" font-size="0.5" text-anchor="middle">1 mm</text>`;
+  sv.innerHTML=st+`<g id="dc-dyn"></g>
+   <g class="dcDrag" id="dc-c" tabindex="0" role="button" aria-roledescription="draggable" aria-label="Capacitor C1, 100 nF. Arrow keys move it, R rotates."></g>
+   <g class="dcDrag" id="dc-v" tabindex="0" role="button" aria-roledescription="draggable" aria-label="C1's ground via. Arrow keys move it."></g>`;
+  const cG=$("#dc-c",sv), vG=$("#dc-v",sv);
+  const pt=e=>{ const m=sv.getScreenCTM(); if(!m) return null; const p=new DOMPoint(e.clientX,e.clientY).matrixTransform(m.inverse()); return [p.x,p.y]; };
+  const snap=v=>Math.round(v*10)/10;
+  const tryS=ns=>{ if(DC.ok(ns)){ self.s=ns; $$("#dc-pre button",root).forEach(b=>b.setAttribute("aria-pressed","false")); self.run(); BC.touchLab("decoup"); return true; } return false; };
+  let drag=null;
+  const down=(e,what)=>{ if(e.button>0) return; const p=pt(e); if(!p) return; e.preventDefault(); (what==="c"?cG:vG).focus({preventScroll:true});
+    drag={what,id:e.pointerId,ox:p[0]-(what==="c"?self.s.cx:self.s.vx),oy:p[1]-(what==="c"?self.s.cy:self.s.vy)}; try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){} };
+  const move=e=>{ if(!drag||e.pointerId!==drag.id) return; const p=pt(e); if(!p) return; const x=snap(p[0]-drag.ox), y=snap(p[1]-drag.oy), s=self.s;
+    if(drag.what==="c"){ if(x!==s.cx||y!==s.cy){ if(!tryS(Object.assign({},s,{cx:x,cy:y}))&&!tryS(Object.assign({},s,{cx:x}))) tryS(Object.assign({},s,{cy:y})); } }
+    else if(x!==s.vx||y!==s.vy){ if(!tryS(Object.assign({},s,{vx:x,vy:y}))&&!tryS(Object.assign({},s,{vx:x}))) tryS(Object.assign({},s,{vy:y})); } };
+  const up=e=>{ if(drag&&e.pointerId===drag.id) drag=null; };
+  [[cG,"c"],[vG,"v"]].forEach(([g,w])=>{ g.addEventListener("pointerdown",e=>down(e,w)); g.addEventListener("pointermove",move); g.addEventListener("pointerup",up); g.addEventListener("pointercancel",up);
+   g.addEventListener("keydown",e=>{ const d={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key], s=self.s;
+    if(w==="c"&&(e.key==="r"||e.key==="R")){ e.preventDefault(); rot(); return; }
+    if(!d) return; e.preventDefault(); const k=e.shiftKey?0.5:0.1, r=v=>Math.round(v*10)/10;
+    const ns=w==="c"?Object.assign({},s,{cx:r(s.cx+d[0]*k),cy:r(s.cy+d[1]*k)}):Object.assign({},s,{vx:r(s.vx+d[0]*k),vy:r(s.vy+d[1]*k)});
+    if(!tryS(ns)) note("dc-n","Blocked: parts and vias need about 0.15 mm of clearance, and C1 stays off the IC.","warn"); }); });
+  const rot=()=>{ const s=self.s; for(let i=1;i<4;i++){ if(tryS(Object.assign({},s,{r:(s.r+i)%4}))){ BC.beep("click"); return; } } note("dc-n","No room to rotate here. Move C1 first.","warn"); };
+  $("#dc-rot",root).addEventListener("click",rot);
+  $("#dc-pre",root).addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; self.s=Object.assign({},DC.PRE[b.dataset.p]); $$("#dc-pre button",root).forEach(x=>x.setAttribute("aria-pressed",x===b)); BC.beep("click"); BC.touchLab("decoup"); self.run(); });
+ },
+ run(){ const sv=$("#dc-sv"); if(!sv||!this.s) return; const s=this.s, h=+$("#dc-h").value, f=+$("#dc-f").value, c=DC.calc(s,h), n=v=>+v.toFixed(3);
+  const P=c.P, B=P.map(p=>DC.padBox(p,s.r)), body=s.r%2?[s.cx-0.28,s.cy-0.5,0.56,1.0]:[s.cx-0.5,s.cy-0.28,1.0,0.56];
+  /* traces and the loop path */
+  const pl=a=>a.map(p=>n(p[0])+","+n(p[1])).join(" ");
+  $("#dc-dyn",sv).innerHTML=`<polyline class="dcTr" points="${DC.VDD[0]},${DC.VDD[1]} ${n(P[0][0])},${n(P[0][1])}" stroke-width="0.3"/><polyline class="dcTr" points="${n(P[1][0])},${n(P[1][1])} ${s.vx},${s.vy}" stroke-width="0.3"/>
+   <polyline class="dcLoop" points="${pl([DC.VDD,P[0],P[1],[s.vx,s.vy]])}"/><polyline class="dcLoop" points="${pl([DC.GV,DC.GND,DC.VDD])}"/>`;
+  $("#dc-c",sv).innerHTML=`<rect class="dcHit" x="${n(body[0]-0.45)}" y="${n(body[1]-0.45)}" width="${n(body[2]+0.9)}" height="${n(body[3]+0.9)}"/>`+B.map(b=>`<rect class="dcPad" x="${n(b[0])}" y="${n(b[1])}" width="${n(b[2])}" height="${n(b[3])}" rx="0.06"/>`).join("")
+   +`<rect class="dcBody" x="${n(body[0]+(s.r%2?0.06:0.2))}" y="${n(body[1]+(s.r%2?0.2:0.06))}" width="${n(body[2]-(s.r%2?0.12:0.4))}" height="${n(body[3]-(s.r%2?0.4:0.12))}"/>`
+   +`<text class="dcTx" x="${n(P[0][0])}" y="${n(P[0][1]+0.17)}" font-size="0.45" text-anchor="middle">1</text><text class="dcTx" x="${n(s.cx+(s.r%2?0.75:0))}" y="${n(s.cy+(s.r%2?0.2:-0.55))}" font-size="0.55" text-anchor="${s.r%2?"start":"middle"}">C1</text>`;
+  $("#dc-v",sv).innerHTML=`<circle class="dcHit" cx="${s.vx}" cy="${s.vy}" r="0.75"/><circle class="dcVia" cx="${s.vx}" cy="${s.vy}" r="${DC.VIA}"/><circle class="pcHole" cx="${s.vx}" cy="${s.vy}" r="0.15"/>`;
+  const Lh=c.L, Z=2*Math.PI*f*Lh, fr=1/(2*Math.PI*Math.sqrt(Lh*100e-9)), Xc=1/(2*Math.PI*f*100e-9);
+  setT("dc-l",fmt(Lh,"H")); setT("dc-z",fmt(Z,"Ω")+" at "+fmt(f,"Hz")); setT("dc-p",`${c.l.toFixed(1)} mm`); setT("dc-a",`${c.A.toFixed(2)} mm²`); setT("dc-r",fmt(fr,"Hz"));
+  const good=h<1&&Lh<2.5e-9;
+  note("dc-n",good?`Under 2.5 nH. The 100 nF itself is only ${fmt(Xc,"Ω")} at ${fmt(f,"Hz")}; the loop's ${fmt(Z,"Ω")} is what the IC sees.`
+   :h>1?`On 2-layer, the return runs 1.6 mm down on B.Cu: every millimetre of path costs about three times as much as on 4-layer.`
+   :`The path is ${c.l.toFixed(1)} mm. Shorten the trace from VDD to C1 and put C1's via right at its ground pad.`,good?"good":"");
+  if(good){ BC.once("decoup-good",10,"decoupling loop under 2.5 nH"); }
+ }};
+
+/* ---- DRC sleuth ---- */
+/* each board: title, shapes S, items [{id, bad, label, box [x,y,w,h] in mm, why}] */
+const DRB=(()=>{ const {pad,tht,via,trk,txt,sl,circ,rectP}=PB, edge={l:"Edge.Cuts",k:"o",x:1,y:1,w:24,h:16,rx:1}, B=[];
+  const soic=(cx,cy,sp)=>[-1.905,-0.635,0.635,1.905].flatMap(d=>[...pad(cx-sp/2,cy+d,1.5,0.6),...pad(cx+sp/2,cy+d,1.5,0.6)]);
+  /* 1: I²C sensor breakout */
+  B.push({title:"Sensor breakout",S:[edge,
+    ...tht(3.5,4.2,1.7,1.0,1),...tht(3.5,6.74,1.7,1.0),...tht(3.5,9.28,1.7,1.0),...tht(3.5,11.82,1.7,1.0),
+    sl([[2.2,2.9],[4.8,2.9],[4.8,13.1],[2.2,13.1],[2.2,2.9]]),txt(3.5,2.55,"J1"),
+    ...soic(16.5,8,5.4),sl([[14.9,5.3],[18.1,5.3]]),sl([[14.9,10.7],[18.1,10.7]]),{l:"F.Silkscreen",k:"c",x:12.75,y:5.35,r:0.2},txt(16.5,8.3,"U1"),
+    ...pad(21.6,5.0,1.0,0.95),...pad(21.6,6.6,1.0,0.95),txt(21.6,6.88,"C1"),
+    trk([[3.5,4.2],[5.5,4.2],[8.4,1.3],[19.4,1.3],[21.6,3.5],[21.6,5.0]],0.4),
+    trk([[19.2,6.095],[20.5,6.095],[21.6,5.0]],0.3),
+    trk([[3.5,6.74],[5.2,6.74],[6.06,7.6],[10.5,7.6],[12.005,6.095],[13.8,6.095]],0.25),
+    trk([[3.5,9.28],[5.2,9.28],[6.55,7.93],[10.9,7.93],[11.465,7.365],[13.8,7.365]],0.25),
+    trk([[13.8,8.635],[12.6,8.635],[12.6,9.905]],0.25),trk([[13.8,9.905],[12.6,9.905],[12.6,10.6]],0.3),trk([[21.6,6.6],[22.6,6.6],[22.6,10.6]],0.3),
+    {l:"F.Cu",k:"p",d:rectP(1.5,10.4,23,6.1)+circ(3.5,11.82,1.15)+circ(21.5,13.6,2.1)},trk([[2.2,11.82],[4.8,11.82]],0.4),trk([[3.5,10.5],[3.5,13.14]],0.4),
+    {l:"NPTH",k:"c",x:21.5,y:13.6,r:1.6}],
+   items:[
+    {id:"clr",bad:1,label:"SDA and SCL where they run side by side",box:[6.5,7.2,4.4,1.1],why:"Clearance. SDA and SCL run 0.33 mm apart centre to centre at 0.25 mm wide, leaving a 0.08 mm gap against a typical 0.127 mm minimum. The fab may etch them into one. Move one trace; DRC reports a clearance violation."},
+    {id:"edge",bad:1,label:"the VCC trace along the top edge",box:[8.6,0.6,10.6,1.25],why:"Copper at the edge. The VCC trace runs 0.1 mm from Edge.Cuts. Routing the outline can nick it or leave it bare at the edge, where it can short to an enclosure. Keep copper 0.3 mm or more from routed edges; DRC checks board edge clearance."},
+    {id:"silk",bad:1,label:"the C1 label",box:[20.9,6.05,1.4,1.1],why:"Silkscreen on a pad. The C1 label crosses C1's ground pad, and ink there stops solder wetting. Fabs usually clip silkscreen out of mask openings, leaving a broken label. Move the text off the pad; DRC flags silkscreen clipped by solder mask."},
+    {id:"th",bad:0,label:"J1 pin 4 and the ground pour",box:[2.1,10.4,2.8,2.8],why:"A thermal relief: four spokes join the pad to the pour, so a soldering iron can still heat it."},
+    {id:"mh",bad:0,label:"the mounting hole",box:[19.6,11.7,3.8,3.8],why:"An unplated M3 mounting hole with copper kept well back, so a screw or standoff can't touch any net."},
+    {id:"c1",bad:0,label:"the trace from U1 pin 8 to C1",box:[19.2,4.6,1.6,1.9],why:"U1's supply pin reaches C1 over a short trace, and C1's ground runs straight down into the pour."},
+    {id:"p1",bad:0,label:"U1's pin 1 dot",box:[12.25,4.85,1.0,1.0],why:"The pin 1 dot sits beside pad 1, off the copper, where it stays visible after assembly."}]});
+  /* 2: 5 V to 3.3 V regulator */
+  B.push({title:"3.3 V regulator",S:[edge,
+    {l:"B.Cu",k:"p",d:rectP(6.2,1.5,18.3,15)+circ(22.5,7.73,1.6)},
+    ...tht(22.5,7.73,1.7,1.0,1),...tht(22.5,10.27,1.7,1.0),txt(22.5,5.75,"J1"),txt(22.5,12.9,"5V",0.7),
+    ...tht(3.5,7.73,1.7,1.0,1),...tht(3.5,10.27,1.7,1.0),txt(3.5,5.75,"J2"),txt(3.5,12.9,"3V3",0.7),
+    ...pad(10.7,12.2,1.2,1.8),...pad(13,12.2,1.2,1.8),...pad(15.3,12.2,1.2,1.8),...pad(13,5.9,3.6,2.0),
+    sl([[9.6,7.4],[9.6,10.8]]),sl([[16.4,7.4],[16.4,10.8]]),txt(13,9.3,"U1"),
+    ...pad(17.9,11.25,1.4,1.0),...pad(17.9,13.15,1.4,1.0),txt(19.6,12.5,"C1",0.7,"start"),
+    ...pad(7.6,6.25,1.4,1.0),...pad(7.6,8.15,1.4,1.0),txt(5.9,7.45,"C2",0.7,"end"),
+    ...pad(18.2,3.2,0.9,0.95),...pad(19.8,3.2,0.9,0.95),...pad(21.0,3.2,0.9,0.95),...pad(22.6,3.2,0.9,0.95),txt(19.0,2.15,"R1",0.6),txt(21.8,2.15,"D1",0.6),
+    trk([[22.5,7.73],[19.8,7.73],[17.9,9.63],[17.9,11.25],[15.3,11.25],[15.3,12.2]],1.0),
+    trk([[21.0,7.73],[18.2,6.16],[18.2,3.2]],0.25),trk([[19.8,3.2],[21.0,3.2]],0.25),trk([[22.6,3.2],[23.6,3.2]],0.25),...via(23.6,3.2),
+    trk([[13,5.9],[6.0,5.9],[4.17,7.73],[3.5,7.73]],0.8),trk([[13,11.3],[13,6.9]],0.6),
+    trk([[10.7,12.2],[10.7,14.0]],0.5),...via(10.7,14.0),trk([[17.9,13.15],[17.9,14.5]],0.5),...via(17.9,14.5),
+    trk([[7.6,8.15],[7.6,9.6]],0.4),...via(7.6,9.6,0.45,0.4),
+    {l:"Rats",k:"t",pts:[[3.5,10.27],[7.6,9.6]],w:0.06}],
+   items:[
+    {id:"ring",bad:1,label:"the via under C2",box:[6.9,8.9,1.4,1.4],why:"Annular ring. This via has a 0.4 mm drill in a 0.45 mm pad, leaving 0.025 mm of copper around the hole. Any drill wander breaks out of the pad. Use 0.3 mm in 0.6 mm, like the other vias; DRC checks the annular width."},
+    {id:"rats",bad:1,label:"J2 pin 2 and the thin line beside it",box:[4.5,9.35,2.3,1.2],why:"Unconnected. A ratsnest line still joins J2 pin 2 to the ground via: the bottom pour stops short of the pad, so the output connector's ground floats. Extend the pour or add a trace, refill the zones, and rerun DRC until no unconnected items remain."},
+    {id:"acid",bad:1,label:"where the LED feed leaves the VIN trace",box:[19.3,6.0,2.4,1.25],why:"Acid trap. The LED feed leaves VIN at about 30°, making a narrow copper wedge. Etchant can pool in the sharp inside corner and eat into it. KiCad's DRC doesn't flag it; branch off at 90° or 45°."},
+    {id:"vin",bad:0,label:"the wide VIN trace",box:[17.0,8.4,2.4,2.0],why:"VIN is 1 mm wide, enough for over 2 A at 1 oz with a 10 °C rise."},
+    {id:"tab",bad:0,label:"U1's tab pad",box:[11.0,4.7,4.0,2.4],why:"U1's tab is large on purpose: it is VOUT and the regulator's heat path into the copper."},
+    {id:"gv",bad:0,label:"U1's ground via",box:[10.0,13.2,1.4,1.5],why:"U1's ground pin drops straight into the bottom pour through a 0.3 mm via in a 0.6 mm pad."}]});
+  /* 3: microcontroller corner */
+  B.push({title:"Microcontroller",S:[edge,
+    {l:"B.Cu",k:"p",d:rectP(1.5,1.5,23,15)+circ(22.5,6.46,1.5)+circ(22.5,11.54,1.4)},
+    ...soic(12,9,5.4),sl([[10.4,6.3],[13.6,6.3]]),sl([[10.4,11.7],[13.6,11.7]]),{l:"F.Silkscreen",k:"c",x:8.25,y:6.35,r:0.2},txt(12,9.3,"U1"),
+    ...tht(22.5,6.46,1.7,1.0,1),...tht(22.5,9.0,1.7,1.0),...tht(22.5,11.54,1.7,1.0),txt(22.5,13.6,"J1"),
+    ...pad(16.9,6.3,1.0,0.95),...pad(16.9,7.9,1.0,0.95),txt(18.0,7.35,"C1",0.7,"start"),...via(16.9,7.9),
+    ...pad(6.2,5.2,1.0,0.95,{nomask:1}),...pad(6.2,6.8,1.0,0.95),txt(5.1,6.25,"R1",0.7,"end"),
+    trk([[14.7,7.095],[16.0,7.095],[16.9,6.3]],0.3),trk([[16.9,6.3],[16.9,4.6],[20.85,4.6],[22.5,6.25],[22.5,6.46]],0.4),
+    trk([[9.3,7.095],[6.2,7.095],[6.2,6.8]],0.25),trk([[6.2,5.2],[6.2,3.6],[16.9,3.6],[16.9,4.6]],0.3),
+    trk([[22.5,9.0],[20.0,9.0]],0.4),...via(20.0,9.0),trk([[9.3,10.905],[7.8,10.905]],0.3),...via(7.8,10.905,0.35,0.15),
+    trk([[22.5,11.54],[16.0,11.54],[15.365,10.905],[14.7,10.905]],0.25),
+    {l:"F.Cu",k:"c",x:11.5,y:3.6,r:0.6},{l:"F.Mask",k:"c",x:11.5,y:3.6,r:0.65},txt(11.5,2.65,"TP1",0.6),
+    {l:"F.Cu",k:"c",x:3.0,y:14.8,r:0.5},{l:"F.Mask",k:"c",x:3.0,y:14.8,r:1.0}],
+   items:[
+    {id:"vip",bad:1,label:"C1's ground pad",box:[16.2,7.3,1.4,1.2],why:"Via in pad. C1's ground pad has an open via in it. In reflow, solder wicks down the hole and the joint starves. Move the via just off the pad, or order filled and capped vias. DRC passes it: it is an assembly problem."},
+    {id:"mask",bad:1,label:"R1's top pad",box:[5.5,4.55,1.4,1.3],why:"No mask opening. R1's top pad is covered by solder mask because the footprint's pad lacks the F.Mask layer, so nothing can solder to it. Fix the pad's layers in the footprint. DRC won't catch it; the Gerber viewer and 3D view will."},
+    {id:"drill",bad:1,label:"the via at U1's ground pin",box:[7.1,10.2,1.4,1.4],why:"Drill too small. This via's hole is 0.15 mm, below the 0.3 mm minimum of a typical low-cost 2-layer service. The fab rejects the order or charges for fine drilling. Put the fab's minimum in Board Setup and DRC catches it."},
+    {id:"tp",bad:0,label:"TP1",box:[10.6,2.75,1.8,1.6],why:"TP1 is a bare round pad for a probe, with a mask opening and no paste."},
+    {id:"fid",bad:0,label:"the copper dot in the corner",box:[1.8,13.6,2.4,2.4],why:"A fiducial: bare copper in a wider mask opening, so the placement camera sees a sharp edge."},
+    {id:"tv",bad:0,label:"the via beside J1",box:[19.3,8.3,1.4,1.4],why:"A tented via: mask covers it, keeping solder out of the hole and protecting the copper."}]});
+  return B;
+})();
+const pcbKey=`<p class="label pcKey"><i class="kc"></i>copper under mask <i class="kx"></i>exposed copper <i class="ks"></i>silkscreen <i class="ke"></i>Edge.Cuts <i class="kb"></i>B.Cu, seen through</p>`;
+L.drc={title:"DRC sleuth",sub:"find what the fab or the oven will punish",html:()=>`
+  <div class="ctrls"><div class="gates" id="dr-nav" role="group" aria-label="Boards">${DRB.map((b,i)=>`<button type="button" data-i="${i}" aria-pressed="${i===0}" aria-label="Board ${i+1}, ${esc(b.title)}">${i+1}</button>`).join("")}</div>
+   <p class="mzTask"><b id="dr-h"></b> <span id="dr-t"></span></p></div>
+  <div class="readout">${ro("Found","dr-f",1)}${ro("Boards cleared","dr-b")}</div>
+  <div class="pcbWrap"><svg class="pcbSv" id="dr-sv" viewBox="0 0 26 18" role="group" aria-label="Board top view. Each feature is a button."></svg></div>
+  ${pcbKey}<p class="note" id="dr-n" aria-live="polite"></p>`,
+ init(root){ let cur=0, found=new Set();
+  const sv=$("#dr-sv",root), solved=i=>!!BC.S.xpOnce["drc-"+i], bads=i=>DRB[i].items.filter(t=>t.bad).length;
+  const stat=()=>{ setT("dr-f",`${found.size} of ${bads(cur)}`); setT("dr-b",`${DRB.filter((_,i)=>solved(i)).length} of ${DRB.length}`);
+   $$("#dr-nav button",root).forEach(b=>{ const i=+b.dataset.i; b.setAttribute("aria-pressed",i===cur); b.classList.toggle("right",solved(i)); b.textContent=(solved(i)?"✓ ":"")+(i+1); }); };
+  const show=i=>{ cur=i; found=new Set(); const b=DRB[i];
+   sv.innerHTML=PB.stack(b.S,"dr"+i)+b.items.map(t=>`<g class="tg" data-t="${t.id}" role="button" tabindex="0" aria-label="${esc(t.label)}"><rect class="hitb" x="${t.box[0]}" y="${t.box[1]}" width="${t.box[2]}" height="${t.box[3]}" rx="0.3"/></g>`).join("");
+   setT("dr-h",`${i+1}. ${b.title}.`); setT("dr-t",`This board has ${bads(i)} problems. Click each one.`); note("dr-n",""); stat(); };
+  const hit=g=>{ const b=DRB[cur], t=b.items.find(x=>x.id===g.dataset.t); if(!t) return; BC.touchLab("drc");
+   if(t.bad){ g.classList.add("ok"); if(found.has(t.id)){ note("dr-n",t.why,"good"); return; } found.add(t.id); note("dr-n",t.why,"good"); BC.beep("good");
+    if(found.size===bads(cur)){ BC.once("drc-"+cur,10,"board checked"); note("dr-n",t.why+" That was the last one on this board.","good"); } stat(); }
+   else { g.classList.add("miss"); note("dr-n",`Fine: ${t.why}`); BC.beep("click"); } };
+  sv.addEventListener("click",e=>{ const g=e.target.closest(".tg"); if(g) hit(g); });
+  sv.addEventListener("keydown",e=>{ const g=e.target.closest(".tg"); if(g&&(e.key==="Enter"||e.key===" ")){ e.preventDefault(); hit(g); } });
+  $("#dr-nav",root).addEventListener("click",e=>{ const b=e.target.closest("button"); if(b) show(+b.dataset.i); });
+  show(Math.max(0,DRB.findIndex((_,i)=>!solved(i))));
+ }};
+
+/* ---- Gerber layers ---- */
+const GB=(()=>{ const {pad,tht,via,trk,txt,sl,circ,rectP}=PB;
+  const S=[{l:"Edge.Cuts",k:"o",x:1,y:1,w:20,h:12,rx:0.8},
+   {l:"B.Cu",k:"p",d:rectP(1.5,1.5,19,11)+circ(3.5,5.73,1.5)+circ(18.5,10.5,1.7)},
+   ...tht(3.5,5.73,1.7,1.0,1),...tht(3.5,8.27,1.7,1.0),
+   ...pad(9.05,5.73,1.0,1.3),...pad(10.95,5.73,1.0,1.3),...pad(14.05,5.73,1.0,1.3),...pad(15.95,5.73,1.0,1.3),
+   trk([[3.5,5.73],[9.05,5.73]],0.4),trk([[10.95,5.73],[14.05,5.73]],0.4),trk([[15.95,5.73],[17.5,5.73]],0.4),...via(17.5,5.73),
+   {l:"NPTH",k:"c",x:18.5,y:10.5,r:1.1},
+   sl([[2.3,4.3],[4.7,4.3],[4.7,9.7],[2.3,9.7],[2.3,4.3]]),txt(3.5,3.6,"J1"),txt(5.5,6.0,"+",0.8),
+   txt(10,4.3,"R1"),txt(15,4.3,"D1"),sl([[16.75,4.6],[16.75,6.86]],0.2),txt(11,11,"LED-1 rev A",0.9)];
+  const LY=[["all","All layers","The board as it comes back from the fab: every file stacked."],
+   ["F.Cu","F.Cu","led-F_Cu.gbr · top copper: pads, traces and the via's top ring."],
+   ["B.Cu","B.Cu","led-B_Cu.gbr · bottom copper: the ground pour, cleared around pin 1 and the mounting hole. Through-hole pads and the via appear on both copper layers."],
+   ["F.Mask","F.Mask","led-F_Mask.gbr · the openings in the top solder mask, drawn as shapes. Everything not drawn gets mask. The via has no opening: it is tented."],
+   ["F.Paste","F.Paste","led-F_Paste.gbr · stencil openings for the four SMD pads only. Through-hole pins get no paste."],
+   ["F.Silkscreen","F.Silkscreen","led-F_Silkscreen.gbr · text, outlines and the LED's cathode bar."],
+   ["Edge.Cuts","Edge.Cuts","led-Edge_Cuts.gbr · the outline the fab routes along. One closed shape."],
+   ["Drill","Drill","led-PTH.drl and led-NPTH.drl · plated holes for J1 and the via; the unplated mounting hole in its own file."]];
+  return {S,LY};
+})();
+L.gerbers={title:"Gerber layers",sub:"one board, taken apart into its files",html:()=>`
+  <div class="ctrls"><div class="gates" id="gb-l" role="group" aria-label="Layer">${GB.LY.map((l,i)=>`<button type="button" data-i="${i}" aria-pressed="${i===0}">${esc(l[1])}</button>`).join("")}</div>
+   <div class="readout">${ro("Showing","gb-n",1)}<p class="note" id="gb-w"></p></div></div>
+  <div class="pcbWrap gbWrap"><svg class="pcbSv" id="gb-sv" viewBox="0 0 22 14" role="img"></svg></div>${pcbKey}`,
+ init(root){ const sv=$("#gb-sv",root);
+  const show=i=>{ const l=GB.LY[i]; $$("#gb-l button",root).forEach(b=>b.setAttribute("aria-pressed",+b.dataset.i===i));
+   sv.classList.toggle("gbSheet",i>0); sv.innerHTML=i?`<rect class="gbBg" x="0" y="0" width="22" height="14"/>`+PB.layer(GB.S,l[0]):PB.stack(GB.S,"gb");
+   sv.setAttribute("aria-label",i?`${l[1]} layer of a small LED board, as its file draws it`:"A small LED board with all layers stacked: J1, R1, D1, a via and a mounting hole");
+   setT("gb-n",l[1]); note("gb-w",l[2]); };
+  $("#gb-l",root).addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; show(+b.dataset.i); BC.beep("click"); BC.touchLab("gerbers"); });
+  show(0);
+ }};
+
 /* ---------- home figure: a battery and one resistor ---------- */
 BC.mountHero=function(host){
   host.innerHTML=`<div class="figBody"><canvas id="hr-cv" aria-label="A 9 volt battery driving a resistor. Moving dots show current."></canvas>

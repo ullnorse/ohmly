@@ -469,6 +469,52 @@ label.btn{cursor:pointer}
 .tsKey{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin-top:6px}
 .tsKey i{display:inline-block;width:14px;height:9px;margin-right:5px;vertical-align:-1px}
 .tsKey .kp{background:var(--accent-soft);border:1px solid var(--accent)} .tsKey .kb{border:1.5px solid var(--ink)} .tsKey .kc{border:1px dashed var(--muted)} .tsKey .k1{width:8px;height:8px;border-radius:50%;background:var(--ink)}
+/* layout and fab labs: boards in fixed board colours, all units in mm */
+.twWrap{grid-column:1/-1;border:1px solid var(--line);background:var(--bg);padding:8px;min-width:0}
+.twWrap svg{display:block;width:100%;height:auto;max-height:340px}
+.twg{stroke:var(--line);stroke-width:.5;vector-effect:non-scaling-stroke}
+.twG{stroke:var(--muted);stroke-width:1;vector-effect:non-scaling-stroke}
+.twCu{fill:var(--copper);opacity:.5} .twCu.hl{opacity:.9}
+.twD{fill:none;stroke:var(--ink);stroke-width:1.2;vector-effect:non-scaling-stroke}
+.twT{fill:var(--ink);font-family:var(--f-mono)}
+.pcbWrap{grid-column:1/-1;overflow-x:auto;border:1px solid var(--line);background:var(--bg)}
+.pcbSv{display:block;width:100%;min-width:520px;height:auto;font-family:var(--f-mono);-webkit-user-select:none;user-select:none}
+.gbWrap .pcbSv{min-width:0}
+.pcBoard{fill:var(--board)}
+.pcT{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.pcB{opacity:.24} .pcB.pcF{fill:#5a86d6} .pcB.pcT{stroke:#5a86d6}
+.pcOpen{fill:#6b6440}
+.pcCu{opacity:.6} .pcCu.pcF{fill:var(--copper)} .pcCu.pcT{stroke:var(--copper)}
+.pcLit.pcF{fill:var(--copper-lit)} .pcLit.pcT{stroke:var(--copper-lit)}
+.pcHole{fill:#0a0c0b}
+.pcSilk.pcF{fill:var(--silk)} .pcSilk.pcT{stroke:var(--silk)}
+.pcEdge{fill:none;stroke:#E3C84B;stroke-width:.12}
+.pcRat{fill:none;stroke:#fff}
+.pcbSv .tg{cursor:pointer;outline:none}
+.pcbSv .hitb{fill:transparent;stroke:none}
+.pcbSv .tg:hover .hitb{fill:rgba(255,255,255,.12)}
+.pcbSv .tg:focus-visible .hitb{stroke:#fff;stroke-width:.08;stroke-dasharray:.3 .2}
+.pcbSv .tg.miss .hitb{stroke:var(--silk);stroke-width:.06;stroke-dasharray:.2 .2}
+.pcbSv .tg.ok .hitb{stroke:var(--accent);stroke-width:.16;fill:rgba(255,90,68,.18)}
+.gbBg{fill:var(--bg)}
+.gbS.pcF{fill:var(--ink)} .gbS.pcT{stroke:var(--ink)} .gbO{fill:none;stroke:var(--ink);stroke-width:.12}
+.pcKey{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
+.pcKey i{display:inline-block;width:14px;height:9px;margin-right:5px;vertical-align:-1px}
+.pcKey .kc{background:#5d5a33} .pcKey .kx{background:var(--copper-lit)} .pcKey .ks{background:var(--silk);border:1px solid var(--line)} .pcKey .ke{border:2px solid #E3C84B} .pcKey .kb{background:#25485a}
+.dcWrap{grid-column:1/-1;border:1px solid var(--line);background:var(--bg);padding:8px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.dcSv{display:block;width:100%;height:auto;max-height:520px}
+.dcGrid{stroke:rgba(255,255,255,.09);stroke-width:.02}
+.dcChip{fill:var(--chip);stroke:var(--silk);stroke-width:.05}
+.dcTx{fill:var(--silk);font-family:var(--f-mono)}
+.dcPad,.dcVia{fill:var(--copper-lit)}
+.dcTr{fill:none;stroke:var(--copper);stroke-linecap:round}
+.dcBody{fill:#B59A6A}
+.dcLoop{fill:none;stroke:#FF5A44;stroke-width:.09;stroke-dasharray:.3 .15;stroke-linejoin:round}
+.dcScale{fill:none;stroke:var(--silk);stroke-width:.05}
+.dcDrag{cursor:grab;touch-action:none;outline:none}
+.dcDrag:active{cursor:grabbing}
+.dcHit{fill:transparent}
+.dcDrag:focus-visible .dcHit{stroke:#fff;stroke-width:.06;stroke-dasharray:.25 .15}
 @media (max-width:640px){ .tsBig svg{height:210px} }
 
 @media (max-width:960px){
