@@ -1,5 +1,6 @@
-/* Ohmly practice problems. BC.PROBLEMS[module] = [template, ...]; a template is () => ({q, ans, unit, tol?, std?, steps}).
-   ans is in base SI units. tol defaults to 0.02 (relative). std:true also accepts the nearest E12 or E24 value. */
+/* Ohmly practice problems. BC.PROBLEMS[module] = [template, ...]; a template is () => ({q, ans, unit, tol?, std?, si?, show?, steps}).
+   ans is in base SI units. tol defaults to 0.02 (relative). std:true also accepts the nearest E12 or E24 value.
+   si:false: ans is a plain number in the stated unit (mm, parts) or a code; no prefixes are parsed, and show is the answer as displayed (0603). */
 (function(){
 const BC=window.BC, {S,esc}=BC;
 const XP=15;
@@ -21,6 +22,11 @@ BC.parseSI = str=>{
 BC.E24=[10,11,12,13,15,16,18,20,22,24,27,30,33,36,39,43,47,51,56,62,68,75,82,91];
 BC.nearestE = (v,series)=>{ const L=series===12?BC.E12:BC.E24, d=Math.pow(10,Math.floor(Math.log10(v))-1); let b=0,bd=1e9;
   for(const c of L.concat(100)){ const e=Math.abs(Math.log(c*d/v)); if(e<bd){bd=e;b=c*d;} } return +b.toPrecision(3); };
+/* plain number with an optional unit word after it ("5.85 mm", "12 parts", "0603"); NaN if invalid */
+BC.parseNum = str=>{ const m=/^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-zA-Z²]*)$/.exec(String(str).replace(/[−–]/g,"-").replace(",",".").trim()); return m?+m[1]:NaN; };
+/* answer as text: SI values with a prefix, plain values as written */
+const ansText=(v,p)=>p.si===false?(p.show!==undefined&&v===p.ans?p.show:String(+v.toPrecision(4)))+(p.unit?" "+p.unit:""):BC.fmt(v,p.unit);
+BC.ansText=ansText;
 /* is the number x an accepted answer to problem p? */
 BC.grade = (x,p)=>{
   if(!isFinite(x)) return false;
@@ -31,6 +37,10 @@ BC.grade = (x,p)=>{
 /* ---------- helpers for templates ---------- */
 const f=(v,u,d=3)=>BC.fmt(v,u,d), pick=BC.pick, rE=(lo,hi)=>pick(BC.e12List(lo,hi));
 const pl=(v,u)=>+v.toPrecision(3)+" "+u;   /* plain base-unit number, for squared units */
+/* RKM codes as drawn on schematics: 4k7, 2R2, 100n, 2u2 */
+const RL=[[1e6,"M","10⁶"],[1e3,"k","10³"],[1,"R","1"]], CL=[[1e-6,"u","10⁻⁶"],[1e-9,"n","10⁻⁹"],[1e-12,"p","10⁻¹²"]];
+const rkm=(v,L)=>{ const [m,ch]=L.find(([m])=>v>=m*0.9999)||L[L.length-1], x=String(+(v/m).toPrecision(2)); return x.includes(".")?x.replace(".",ch):x+ch; };
+const CODES=[["0201","0603",0.6,0.3],["0402","1005",1.0,0.5],["0603","1608",1.6,0.8],["0805","2012",2.0,1.25],["1206","3216",3.2,1.6],["1210","3225",3.2,2.5]];
 const std=(r,u="Ω")=>{ const a=BC.nearestE(r,12), c=BC.nearestE(r,24); return `Standard values: nearest E12 is ${f(a,u)}, nearest E24 is ${f(c,u)}`; };
 
 const T={
@@ -195,7 +205,7 @@ const T={
    return {q:`A ring oscillator is ${N} inverters in a loop, each with a propagation delay of ${f(t,"s")}. What is its oscillation frequency, in hertz?`, ans:fr, unit:"Hz",
      steps:[`An edge must travel around the ring twice per cycle, once to flip the output and once to flip it back.`,`T = 2 · N · tpd = 2 × ${N} × ${f(t,"s")} = ${f(T,"s")}.`,`f = 1 / T = 1 / ${f(T,"s")} = ${f(fr,"Hz")}.`,`An odd number of inverters is needed so that the loop has no stable state.`]}; },
  ()=>{ const v=16+Math.floor(Math.random()*240), h=v>>4, l=v&15, H=h.toString(16).toUpperCase(), L=l.toString(16).toUpperCase(), b=v.toString(2).padStart(8,"0");
-   return {q:`What is the decimal value of the byte 0x${H}${L}?`, ans:v, unit:"decimal", tol:0,
+   return {q:`What is the decimal value of the byte 0x${H}${L}?`, ans:v, unit:"decimal", si:false, tol:0,
      steps:[`Each hex digit is four bits. 0x${H} = ${h} and 0x${L} = ${l}.`,`Value = ${h} × 16 + ${l} = ${h*16} + ${l} = ${v}.`,`Check in binary: ${b.slice(0,4)} ${b.slice(4)}.`]}; }
 ],
 12:[
@@ -270,7 +280,7 @@ const T={
 ],
 17:[
  ()=>{ const fr=pick([20,50,100,200,440,1e3,2e3,5e3,10e3,20e3]), l=343/fr;
-   return {q:`What is the wavelength of a ${f(fr,"Hz")} tone in air, with the speed of sound at 343 m/s, in metres?`, ans:l, unit:"m",
+   return {q:`What is the wavelength of a ${f(fr,"Hz")} tone in air, with the speed of sound at 343 m/s, in metres?`, ans:l, unit:"m", si:false,
      steps:[`λ = v / f.`,`λ = 343 m/s / ${f(fr,"Hz")} = ${f(l,"m")}.`,`Long wavelengths bend around obstacles easily. This is why bass is hard to localise and why a woofer needs a large enclosure.`]}; },
  ()=>{ const Vp=pick([2,5,8,10,13,20]), R=pick([4,6,8]), P=Vp*Vp/(2*R);
    return {q:`An amplifier drives a sine wave of ${f(Vp,"V")} peak into a ${f(R,"Ω")} speaker. What average power does the speaker receive, in watts?`, ans:P, unit:"W",
@@ -281,6 +291,51 @@ const T={
  ()=>{ const fc=pick([2000,2500,3000,3500,4000,5000]), R=pick([4,6,8]), C=1/(2*Math.PI*fc*R);
    return {q:`A first-order crossover puts a series capacitor in front of a ${f(R,"Ω")} tweeter, with a −3 dB point at ${f(fc,"Hz")}. Calculate C, then enter the nearest standard E12 or E24 value.`, ans:C, unit:"F", std:true,
      steps:[`The capacitor and the tweeter form a high-pass filter: fc = 1 / (2π · R · C), so C = 1 / (2π · R · fc).`,`C = 1 / (2π × ${f(R,"Ω")} × ${f(fc,"Hz")}) = ${f(C,"F")}.`,`${std(C,"F")}.`,`The real impedance of a tweeter varies with frequency, so the actual corner will differ from the nominal figure.`]}; }
+],
+18:[
+ ()=>{ const isC=Math.random()<0.4, v=isC?rE(10,47e6)*1e-12:rE(1,8.2e6), code=rkm(v,isC?CL:RL), L=(isC?CL:RL).find(([m])=>v>=m*0.9999), ref=(isC?"C":"R")+pick([2,3,4,5,7,9,11,12,15]);
+   return {q:`A schematic marks ${ref} as ${code}. What is its value, in ${isC?"farads":"ohms"}?`, ans:v, unit:isC?"F":"Ω",
+     steps:[`The letter stands where the decimal point would be and sets the multiplier: ${L[1]} means × ${L[2]}.`,`${code} = ${+(v/L[0]).toPrecision(3)} × ${L[2]} = ${f(v,isC?"F":"Ω")}.`,`A letter in place of the point survives a lost or smudged dot on a printed schematic.`]}; },
+ ()=>{ const V=pick([3.3,5]), led=pick(V===5?[["red",2.0],["green",2.1],["blue",3.0]]:[["red",2.0],["green",2.1]]), R=rE(220,1000), I=(V-led[1])/R, net=V===5?"+5V":"+3V3";
+   return {q:`The net ${net} feeds R4, marked ${rkm(R,RL)}, and then a ${led[0]} LED with a forward voltage of ${led[1]} V. The LED's cathode goes to a GND symbol. What current flows, in amps?`, ans:I, unit:"A",
+     steps:[`${net} is a power symbol: the net is at ${f(V,"V")}, and GND at 0 V.`,`Voltage across R4: ${f(V,"V")} − ${f(led[1],"V")} = ${f(V-led[1],"V")}.`,`I = ${f(V-led[1],"V")} / ${f(R,"Ω")} = ${f(I,"A")}.`]}; },
+ ()=>{ const Vb=pick([3.0,3.3,3.7,4.2,5,9,12]), a=rE(10e3,220e3), b=rE(10e3,220e3), o=Vb*b/(a+b);
+   return {q:`The net VBAT, at ${f(Vb,"V")}, connects to R5 (${rkm(a,RL)}). R5's other end is the net VBAT_SENSE, which also goes through R6 (${rkm(b,RL)}) to GND. Nothing else draws current from VBAT_SENSE. What voltage is on VBAT_SENSE, in volts?`, ans:o, unit:"V",
+     steps:[`R5 and R6 form a divider from VBAT to GND, with VBAT_SENSE at the middle.`,`V = ${f(Vb,"V")} × ${f(b,"Ω")} / (${f(a,"Ω")} + ${f(b,"Ω")}) = ${f(Vb,"V")} × ${+(b/(a+b)).toPrecision(3)} = ${f(o,"V")}.`,`Divider current: ${f(Vb,"V")} / ${f(a+b,"Ω")} = ${f(Vb/(a+b),"A")}, drawn from the battery all the time.`]}; },
+ ()=>{ const k=pick([2,3,4,5,6,8]), r=pick([2,3,4,6]), c=pick([1,2,3,4]), u=pick([1,2]), root=pick([3,4,5,6,8]), per=r+c+u, tot=k*per+root;
+   return {q:`A KiCad project places the sheet motor.kicad_sch ${k} times. That sheet holds ${r} resistors, ${c} capacitor${c>1?"s":""} and ${u} IC${u>1?"s":""}. The root sheet has ${root} more parts. How many parts does the bill of materials list?`, ans:tot, unit:"parts", si:false, tol:0,
+     steps:[`Each placement of a sheet is a full copy of its parts: ${r} + ${c} + ${u} = ${per} parts per copy.`,`${k} copies × ${per} = ${k*per} parts.`,`Add the root sheet: ${k*per} + ${root} = ${tot} parts.`,`Annotation gives every copy its own designators, so the BOM shows R1 only once, not ${k} times.`]}; }
+],
+19:[
+ ()=>{ const [mode,tr]=pick([["standard mode (100 kHz)",1000e-9],["fast mode (400 kHz)",300e-9]]), Cb=pick([50,80,100,150,200,250,300,400])*1e-12, R=tr/(0.8473*Cb);
+   return {q:`An I²C bus in ${mode} allows a rise time of ${f(tr,"s")}, and its capacitance is ${f(Cb,"F")}. What is the largest pull-up resistance that meets the rise time, in ohms?`, ans:R, unit:"Ω",
+     steps:[`The rise from 30% to 70% of the supply takes ln(0.7 / 0.3) = 0.8473 time constants, so t_r = 0.8473 · R · C_b.`,`R_max = ${f(tr,"s")} / (0.8473 × ${f(Cb,"F")}) = ${f(R,"Ω")}.`,`Pick a standard value below it, such as ${f(BC.e12Down(R),"Ω")}, and check that it stays above the minimum set by the sink current.`]}; },
+ ()=>{ const V=pick([2.5,3.3,5]), [I,mode]=pick([[3e-3,"standard or fast mode"],[20e-3,"fast mode plus"]]), R=(V-0.4)/I;
+   return {q:`In I²C ${mode}, a device must be able to pull a line to 0.4 V while sinking ${f(I,"A")}. On a ${f(V,"V")} bus, what is the smallest pull-up resistance allowed, in ohms?`, ans:R, unit:"Ω",
+     steps:[`With the line held at 0.4 V, the pull-up carries (V_DD − 0.4 V) / R, and that must not exceed ${f(I,"A")}.`,`R_min = (${f(V,"V")} − 0.4 V) / ${f(I,"A")} = ${f(V-0.4,"V")} / ${f(I,"A")} = ${f(R,"Ω")}.`,`A smaller resistor gives faster edges but a low level the devices can't guarantee.`]}; },
+ ()=>{ let V,a,b,t,hi,k,a2,b2,o,nom;
+   do{ V=pick([3.3,5,12]); a=rE(1e3,100e3); b=rE(1e3,100e3); t=pick([1,2,5,10]); hi=pick([true,false]); k=t/100;
+     a2=a*(hi?1-k:1+k); b2=b*(hi?1+k:1-k); o=V*b2/(a2+b2); nom=V*b/(a+b); } while(Math.abs(o/nom-1)<0.012); /* worst case must differ visibly from nominal */
+   return {q:`A divider has R1 = ${f(a,"Ω")} on top and R2 = ${f(b,"Ω")} to ground, both ±${t}%, across ${f(V,"V")}. What is the ${hi?"highest":"lowest"} output it can give, in volts?`, ans:o, unit:"V", tol:.005,
+     steps:[`The output is ${hi?"highest":"lowest"} when R1 is at its ${hi?"minimum":"maximum"} and R2 at its ${hi?"maximum":"minimum"}.`,`R1 = ${f(a,"Ω")} × ${hi?1-k:1+k} = ${f(a2,"Ω")}; R2 = ${f(b,"Ω")} × ${hi?1+k:1-k} = ${f(b2,"Ω")}.`,`Vout = ${f(V,"V")} × ${f(b2,"Ω")} / (${f(a2,"Ω")} + ${f(b2,"Ω")}) = ${f(o,"V",4)}.`,`Nominal is ${f(nom,"V",4)}, so the worst case is ${+(Math.abs(o/nom-1)*100).toPrecision(2)}% away. Put the tolerance in the BOM.`]}; },
+ ()=>{ const V=pick([3.3,5,9,12,15,24]), Rt=[6.3,10,16,25,35,50,100].find(x=>x>=2*V-1e-9);
+   return {q:`A ceramic capacitor sits on a ${f(V,"V")} rail. Using the rule of at least twice the working voltage, which standard rating should you choose from 6.3, 10, 16, 25, 35, 50 and 100 V, in volts?`, ans:Rt, unit:"V", tol:0,
+     steps:[`Twice the working voltage: 2 × ${f(V,"V")} = ${f(2*V,"V")}.`,`The lowest standard rating at or above that is ${f(Rt,"V")}.`,`The margin covers the capacitance a class 2 ceramic loses under DC bias, plus spikes on the rail.`]}; }
+],
+20:[
+ ()=>{ const [imp,met,L,W]=pick(CODES), toM=pick([true,false]), ii=[+imp.slice(0,2)/100,+imp.slice(2)/100];
+   return {q:toM?`What is the metric size code of an imperial ${imp} chip?`:`What is the imperial size code of a metric ${met} chip?`, ans:+(toM?met:imp), show:toM?met:imp, unit:"", si:false, tol:0,
+     steps:[`Imperial codes are hundredths of an inch: ${imp} is ${ii[0]} × ${ii[1]} in = ${+(ii[0]*25.4).toPrecision(3)} × ${+(ii[1]*25.4).toPrecision(3)} mm.`,`Metric codes are tenths of a millimetre of the nominal size, ${L} × ${W} mm, so the metric code is ${met}.`,`Imperial ${imp} = metric ${met}.${imp==="0201"?" Metric 0603 is this tiny part, not the common imperial 0603.":""}`]}; },
+ ()=>{ const [nm,len]=pick([["0402",1.0],["0603",1.6],["0603",1.6],["0805",2.0],["1206",3.2]]), Lm=pick([10,15,20,25,30,40,50]), g=pick([0.3,0.4,0.5,0.6,0.8]),
+     n=Math.floor((Lm*100+Math.round(g*100))/(Math.round(len*100)+Math.round(g*100))), used=n*len+(n-1)*g;
+   return {q:`How many ${nm} parts, ${len} mm long, fit end to end along a ${Lm} mm strip of board with ${g} mm between neighbouring bodies?`, ans:n, unit:"parts", si:false, tol:0,
+     steps:[`n parts take n · ${len} mm + (n − 1) · ${g} mm, and that must be at most ${Lm} mm.`,`So n ≤ (${Lm} + ${g}) / (${len} + ${g}) = ${+((Lm+g)/(len+g)).toPrecision(4)}, and n = ${n}.`,`Check: ${n} × ${len} + ${n-1} × ${g} = ${+used.toPrecision(4)} mm, which fits in ${Lm} mm.`]}; },
+ ()=>{ const [pk,p,per,sides]=pick([["DIP",2.54,[4,7,8,10,14,20],2],["SOIC",1.27,[4,7,8,10,14],2],["TSSOP",0.65,[7,8,10,12,14],2],["QFN",0.5,[4,6,8,10,12],4]]), k=pick(per), sp=(k-1)*p;
+   return {q:`A ${pk}-${k*sides} package has ${k} pins along each side at ${p} mm pitch. What is the distance between the centres of the first and last pin on one side, in millimetres?`, ans:sp, unit:"mm", si:false,
+     steps:[`${k} pins in a row have ${k-1} gaps of one pitch between them: span = (n − 1) · pitch.`,`Span = ${k-1} × ${p} mm = ${+sp.toPrecision(4)} mm.`,`The body has to be longer than this to hold the pins, which is why fine pitch shrinks packages.`]}; },
+ ()=>{ const [pk,p,ws]=pick([["SOIC",1.27,[0.55,0.6,0.65]],["TSSOP",0.65,[0.35,0.4,0.45]],["QFN",0.5,[0.25,0.28,0.3]],["QFN",0.4,[0.2,0.22,0.25]],["SOT-23-6",0.95,[0.55,0.6]]]), w=pick(ws), gap=p-w;
+   return {q:`A ${pk} footprint has pads ${w} mm wide at ${p} mm pitch. How wide is the copper gap between neighbouring pads, in millimetres?`, ans:gap, unit:"mm", si:false,
+     steps:[`Pitch runs centre to centre, so the gap is the pitch minus one pad width.`,`Gap = ${p} mm − ${w} mm = ${+gap.toPrecision(3)} mm.`,`Solder mask between the pads has to fit in this gap, and fabs set a minimum width for it. Check yours before choosing pads.`]}; }
 ]
 
 };
@@ -292,7 +347,7 @@ const INSTANCES=new WeakMap();
 const cardHTML=(key,p,label,id)=>`<form class="prob" data-key="${key}" novalidate>
   <div class="ph"><span class="label">${label}</span><span class="ok${S.probs[key]?" on":""}">✓ solved</span></div>
   <p class="pq">${esc(p.q)}</p>
-  <div class="pin"><div class="ctrl"><label for="${id}"><span>Answer, in ${esc(p.unit)}</span></label><input id="${id}" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="4.7k, 15m, 2.2u"></div>
+  <div class="pin"><div class="ctrl"><label for="${id}"><span>Answer${p.unit?", in "+esc(p.unit):""}</span></label><input id="${id}" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${p.si===false?"a number":"4.7k, 15m, 2.2u"}"></div>
    <button class="btn primary" type="submit">Check</button><button class="btn" type="button" data-a="show">Show solution</button></div>
   <div class="pres" aria-live="polite" hidden></div></form>`;
 let uid=0;
@@ -302,8 +357,8 @@ const finish=(form,how,x)=>{
   const st=INSTANCES.get(form), p=st.p, key=form.dataset.key; if(st.done) return; st.done=true;
   const ok=how==="check"&&BC.grade(x,p), res=form.querySelector(".pres");
   form.querySelector("input").disabled=true; form.querySelectorAll("button").forEach(b=>b.disabled=true);
-  const head=how==="show"?`<b>Solution.</b> Not graded.`:ok?`<b class="good">Correct.</b>`:`<b class="bad">Not quite.</b> You entered ${esc(f(x,p.unit))}.`;
-  res.innerHTML=`<p>${head} Answer: <b class="mono">${esc(f(p.ans,p.unit))}</b></p><ol class="steps">${p.steps.map(s=>`<li>${esc(s)}</li>`).join("")}</ol><button class="btn" type="button" data-a="more">Another one</button>`;
+  const head=how==="show"?`<b>Solution.</b> Not graded.`:ok?`<b class="good">Correct.</b>`:`<b class="bad">Not quite.</b> You entered ${esc(ansText(x,p))}.`;
+  res.innerHTML=`<p>${head} Answer: <b class="mono">${esc(ansText(p.ans,p))}</b></p><ol class="steps">${p.steps.map(s=>`<li>${esc(s)}</li>`).join("")}</ol><button class="btn" type="button" data-a="more">Another one</button>`;
   res.hidden=false;
   if(how==="check"){ if(ok){ BC.beep("good"); if(!S.probs[key]){ S.probs[key]=1; BC.save(); form.querySelector(".ok").classList.add("on"); BC.addXP(XP,"problem solved"); } } else BC.beep("bad"); }
 };
@@ -312,8 +367,8 @@ BC.probMount = (root,specs,fresh)=>{
   const cs=specs.map(d=>make(d.n,d.i,d.label)); root.innerHTML=cs.map(c=>c.html).join(""); cs.forEach(c=>reg(root,c));
   if(root._pb) { root._pb.fresh=fresh; return; } root._pb={fresh};
   root.addEventListener("submit",e=>{ const form=e.target.closest(".prob"); if(!form) return; e.preventDefault();
-    const st=INSTANCES.get(form); if(!st||st.done) return; const inp=form.querySelector("input"), x=BC.parseSI(inp.value), res=form.querySelector(".pres");
-    if(isNaN(x)){ res.hidden=false; res.innerHTML=`<p class="bad">Enter a number, optionally with a prefix: 4.7k, 15m, 2.2u, 1M. A unit after it is ignored.</p>`; inp.focus(); return; }
+    const st=INSTANCES.get(form); if(!st||st.done) return; const plain=st.p.si===false, inp=form.querySelector("input"), x=plain?BC.parseNum(inp.value):BC.parseSI(inp.value), res=form.querySelector(".pres");
+    if(isNaN(x)){ res.hidden=false; res.innerHTML=plain?`<p class="bad">Enter a plain number, such as 12 or 0.65. A unit after it is ignored.</p>`:`<p class="bad">Enter a number, optionally with a prefix: 4.7k, 15m, 2.2u, 1M. A unit after it is ignored.</p>`; inp.focus(); return; }
     finish(form,"check",x); });
   root.addEventListener("click",e=>{ const b=e.target.closest("[data-a]"), form=b&&b.closest(".prob"); if(!form) return;
     if(b.dataset.a==="show") finish(form,"show");
