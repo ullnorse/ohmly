@@ -553,7 +553,10 @@ body.tdWide nav.rail:not(.open){display:none}
 body.tdWide .wrap{max-width:1500px;gap:18px}
 body.tdWide main{padding-block:22px 40px}
 .td{--tdSub:#24312B;--tdStage:var(--sunk);--tdF:#C8874A;--tdI1:#A3A35A;--tdI2:#4F9E95;--tdB:#6E8DC4;--tdPad:#D9B45E;--tdSilk:#EEF2EE;--tdEdge:#E3C84B;--tdHi:#FF6A4F;--tdHiPad:#FFD9A0;
-  display:grid;grid-template-columns:240px minmax(0,1fr) 330px;gap:0;height:calc(100vh - 190px);min-height:540px;border:1px solid var(--rule)}
+  display:grid;grid-template-columns:240px minmax(0,1fr) 330px;grid-template-rows:minmax(300px,1fr) auto;gap:0;min-height:max(780px,calc(100vh - 110px));border:1px solid var(--rule)}
+.tdList{grid-column:1;grid-row:1/3} .tdBoard{grid-column:2;grid-row:1} .tdTime{grid-column:2;grid-row:2} .tdCard{grid-column:3;grid-row:1/3}
+/* side panes scroll inside whatever height the middle column sets */
+@media (min-width:981px){ .tdList,.tdCard{contain:size} }
 :root[data-theme="dark"] .td{--tdSub:#18211D}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .td{--tdSub:#18211D} }
 .tdHead h1{font-size:clamp(2.2rem,4.5vw,3rem)}
@@ -634,13 +637,60 @@ body.tdWide main{padding-block:22px 40px}
 .tdPin:hover,.tdPin.on{background:#fff;color:var(--accent);border-color:var(--accent)}
 .tdPin:focus-visible{outline:2px solid #fff;outline-offset:2px}
 .tdTabs{display:none}
+/* timeline: the time half. The current plot is datasheet ink on paper; the probe strip is a scope screen in both themes. */
+.tdTime{display:flex;flex-direction:column;min-width:0;border-top:1px solid var(--rule);background:var(--bg)}
+.tdTBar{border-top:0}
+.tdTBar select{font-family:var(--f-mono);font-size:.78rem;padding:4px 6px;border:1px solid var(--line);background:var(--bg);max-width:190px}
+.tdPre{display:inline-flex;gap:0}
+.tdPre .btn,.tdProbeB{padding:3px 9px;font-size:.8rem;height:30px;border-width:1px}
+.tdPre .btn+.btn{border-left:0}
+.tdProbeB[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.tdTog input:disabled+*{opacity:.5}
+.tdScope{position:relative;height:184px;touch-action:none;cursor:crosshair;outline:none;background:var(--bg)}
+.td.probing .tdScope{height:268px}
+.tdScope:focus-visible{box-shadow:inset 0 0 0 2px var(--accent)}
+.tdScope canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.tdRead{padding:3px 10px;border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.9em}
+.tdStats{display:flex;flex-wrap:wrap;gap:2px 16px;padding:4px 10px;border-top:1px solid var(--line)}
+.tdStats b{color:var(--ink);font-weight:500}
+.tdEst{color:var(--warn)}
+.tdSrc{padding:0 10px 6px}
+.tdSrc summary{cursor:pointer;padding:3px 0}
+.tdSrcT{font-size:.76rem}
+.tdSrcT td{padding:3px 4px;vertical-align:top}
+.tdSrcT td:last-child{font-family:var(--f-body);text-align:left;color:var(--muted)}
+.tdSrcT td:nth-child(3){font-family:var(--f-mono);text-align:right;white-space:nowrap}
+/* story panel */
+.tdStory{padding:8px 12px 10px;border-bottom:1px solid var(--line);background:var(--accent-soft);display:flex;flex-direction:column;gap:5px}
+.tdStory[hidden]{display:none}
+.tdStH{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.tdStH .iconBtn{width:28px;height:26px}
+.tdStory h3{font-size:1.15rem}
+.tdStB{display:flex;flex-direction:column;gap:5px;max-height:min(30vh,250px);overflow-y:auto;outline:none}
+.tdBudget tr td{padding-block:1px;line-height:1.35}
+.tdStT{max-width:78ch;font-size:.92rem}
+.tdStL a{color:var(--ink)}
+.tdStC{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tdStC .btn{padding:4px 11px;font-size:.84rem}
+.tdDots{display:inline-flex;gap:2px;margin-left:6px}
+.tdDots button{width:22px;height:22px;padding:0;border:0;background:none;cursor:pointer;display:grid;place-items:center}
+.tdDots button::before{content:"";width:9px;height:9px;border-radius:50%;border:1.5px solid var(--ink)}
+.tdDots button.on::before{background:var(--accent);border-color:var(--accent)}
+.tdBudget{font-size:.8rem;max-width:520px}
+.tdBudget td{padding:2px 4px}
+.tdBudget td:first-child{font-family:var(--f-mono);width:44px;color:var(--muted)}
+.tdBudget tr.on td{color:var(--ink);font-weight:600}
+.tdBudget tr:not(.on):not(.sum) td{color:var(--muted)}
+.tdBudget tr.sum td{border-top:1.5px solid var(--rule);font-weight:600}
+.tdStoriesL .tdItem .mono{white-space:nowrap}
 .tdCredit{margin-top:4px}
 @media (max-width:1180px){
   .td{grid-template-columns:210px minmax(0,1fr) 290px}
 }
 @media (max-width:980px) and (min-width:761px){
-  .td{grid-template-columns:200px minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;height:auto}
-  .tdList{grid-row:1/3;max-height:calc(100vh - 160px)}
+  .td{grid-template-columns:200px minmax(0,1fr);grid-template-rows:auto auto auto;height:auto}
+  .tdList{grid-row:1/4;max-height:calc(100vh - 160px)}
+  .tdCard{grid-column:2;grid-row:3}
   .tdBoard{height:62vh;min-height:420px}
   .tdCard{border-left:0;border-top:1px solid var(--line)}
 }
@@ -662,5 +712,19 @@ body.tdWide main{padding-block:22px 40px}
   .tdTabs .btn{flex:1;padding:8px 10px}
   .tdTabs .btn[aria-expanded="true"]{background:var(--ink);color:var(--bg)}
   .tdCredit{margin-bottom:56px}
+  .tdTime{border:1px solid var(--rule);border-top:0}
+  .tdTBar{gap:4px 6px}
+  .tdTBar select{max-width:none;flex:1 1 100%}
+  .tdScope{height:150px}
+  .td.probing .tdScope{height:220px}
+  .td.storyOn .tdBoard{height:36vh;min-height:220px}
+  .td.storyOn .tdScope{height:132px}
+  .td.storyOn.probing .tdScope{height:190px}
+  .tdStory{gap:3px;padding:6px 10px 8px}
+  .tdStB{max-height:none;overflow:visible;gap:3px}
+  .tdStT{font-size:.88rem}
+  .tdStC .btn{padding:4px 9px}
+  .tdDots{margin-left:0}
+  .tdSrcT td:last-child{display:none}
   body.tdWide footer.site{margin-bottom:76px}
 }
