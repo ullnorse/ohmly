@@ -9,8 +9,8 @@ const nn=v=>isN(v)&&v>=0?v:undefined, bn=v=>typeof v==="boolean"||isN(v)?v:undef
 const map=f=>v=>{ if(!isO(v)) return; const o={}; for(const k of Object.keys(v)){ const x=f(v[k]); if(x!==undefined) o[k]=x; } return o; };
 const FIX={done:map(bn), quiz:map(v=>map(bn)(v)), lastCh:v=>v===null||isN(v)?v:undefined, xp:nn, badges:map(nn), labs:map(bn), hi:map(nn), cards:map(nn),
   streak:v=>isO(v)?{last:typeof v.last==="string"?v.last:null,n:nn(v.n)||0}:undefined, sound:v=>typeof v==="boolean"?v:undefined, fried:nn, scoped:nn,
-  theme:v=>["system","light","dark"].includes(v)?v:undefined, xpDone:map(bn), xpQ:map(bn), xpMax:map(nn), xpOnce:map(bn), xpCard:map(bn)};
-BC.defaults = ()=>({done:{}, quiz:{}, lastCh:null, xp:0, badges:{}, labs:{}, hi:{}, cards:{}, streak:{last:null,n:0}, sound:true, fried:0, scoped:0, xpDone:{}, xpQ:{}, xpMax:{}, xpOnce:{}, xpCard:{}});
+  theme:v=>["system","light","dark"].includes(v)?v:undefined, xpDone:map(bn), xpQ:map(bn), xpMax:map(nn), xpOnce:map(bn), xpCard:map(bn), probs:map(bn)};
+BC.defaults = ()=>({done:{}, quiz:{}, lastCh:null, xp:0, badges:{}, labs:{}, hi:{}, cards:{}, streak:{last:null,n:0}, sound:true, fried:0, scoped:0, xpDone:{}, xpQ:{}, xpMax:{}, xpOnce:{}, xpCard:{}, probs:{}});
 /* type-check every field of untrusted state (storage or import) and merge the valid ones into the defaults */
 BC.sanitize = o=>{ const r=BC.defaults(); if(isO(o)) for(const k of Object.keys(FIX)){ const v=FIX[k](o[k]); if(v!==undefined) r[k]=v; } return r; };
 const S = BC.S = BC.defaults();
