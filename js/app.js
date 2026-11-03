@@ -9,6 +9,12 @@ const answeredIn=c=>realKeys(S.quiz[c.n]).length;
 const prog=c=>S.done[c.n]?1:(c.quiz.length?Math.min(.9,.9*answeredIn(c)/c.quiz.length):0);
 const pad=n=>String(n).padStart(2,"0");
 const partOf=c=>D.PARTS[c.part];
+/* parts in D.PARTS order, only those that have modules */
+const partKeys=()=>Object.keys(D.PARTS).filter(p=>M.some(c=>c.part===p));
+const labTotal=()=>new Set(M.flatMap(c=>c.labs)).size;
+const WORDS=["Zero","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+const TENS=["","","Twenty","Thirty","Forty"];
+const word=n=>n<20?WORDS[n]:n<50?TENS[Math.floor(n/10)]+(n%10?"-"+WORDS[n%10].toLowerCase():""):String(n);
 
 /* ---------- theme ---------- */
 function applyTheme(){ const t=S.theme||"system"; if(t==="system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme",t); }
@@ -33,7 +39,7 @@ BC.onXP=()=>{header(); rail(currentKey);};
 let currentKey="home";
 function rail(cur){
   let html="";
-  ["A","B","C"].forEach(p=>{
+  partKeys().forEach(p=>{
     html+=`<div class="grp">${esc(D.PARTS[p].name)}</div>`+
      M.filter(c=>c.part===p).map(c=>{const done=S.done[c.n], n=answeredIn(c);
        return `<a href="#m-${c.n}" class="${cur===c.n?"on":""}"${cur===c.n?' aria-current="page"':""}><span class="n">${pad(c.n)}</span><span>${esc(c.title)}</span><span class="st ${done?"done":""}">${done?"✓":n?"·":""}</span></a>`;}).join("");
@@ -74,14 +80,14 @@ function home(){
   return `
   <header class="mast">
     <h1 tabindex="-1">Electronics, learned at the bench.</h1>
-    <p class="lede">Seventeen short modules. Each one explains an idea in plain language, then gives you a working circuit to change so you can see what happens. Free, in the browser, nothing to install.</p>
+    <p class="lede">${word(M.length)} short modules. Each one explains an idea in plain language, then gives you a working circuit to change so you can see what happens. Free, in the browser, nothing to install.</p>
     <div class="mastActions"><a class="btn primary big" href="#m-${next.n}">${started?`Continue with module ${next.n}`:"Start with module 1"} →</a><a class="text" href="#practice">or go straight to practice</a></div>
   </header>
   <figure class="fig" id="fig1"><div id="heroHost"></div>
     <figcaption><b>Fig. 1</b>A 9 V battery and one resistor. Drag the slider: the dots are current, and the resistor heats up as the power rises. Module 1 explains why.</figcaption></figure>
   <section class="contents" aria-labelledby="ch">
     <div class="sectionHead spread"><h2 id="ch">Contents</h2>${started?`<a class="label" href="#log">${fin} of ${M.length} finished · logbook →</a>`:""}</div>
-    ${["A","B","C"].map(p=>`<div class="part"><h3>Part ${p}. ${esc(D.PARTS[p].name)} <small>${esc(D.PARTS[p].desc)}</small></h3>
+    ${partKeys().map(p=>`<div class="part"><h3>Part ${p}. ${esc(D.PARTS[p].name)} <small>${esc(D.PARTS[p].desc)}</small></h3>
       <table class="toc"><thead><tr><th scope="col">No.</th><th scope="col">Module</th><th scope="col" class="labs">Labs</th><th scope="col" style="text-align:right">Status</th></tr></thead><tbody>
       ${M.filter(c=>c.part===p).map(c=>{const n=answeredIn(c), done=S.done[c.n];
         return `<tr><td class="no">${pad(c.n)}</td><td class="t"><a href="#m-${c.n}">${esc(c.title)}</a><span>${esc(c.blurb)}</span></td><td class="labs">${c.labs.length}</td><td class="stat ${done?"done":""}">${done?"done":n?`${n}/${c.quiz.length}`:"—"}</td></tr>`;}).join("")}
@@ -104,7 +110,7 @@ function logbook(){
    <table class="spec"><tbody>
     <tr><td>Modules finished</td><td>${fin} / ${M.length}</td></tr>
     <tr><td>Quiz answers</td><td>${right} right of ${answered}</td></tr>
-    <tr><td>Labs tried</td><td>${Object.keys(S.labs).length} / 27</td></tr>
+    <tr><td>Labs tried</td><td>${Object.keys(S.labs).filter(k=>BC.LABS[k]).length} / ${labTotal()}</td></tr>
     <tr><td>Days in a row</td><td>${S.streak.n||0}</td></tr>
     ${Object.entries(BC.GAMES).map(([id,g])=>`<tr><td>${esc(g.title)}, best</td><td>${S.hi[id]!==undefined?S.hi[id]:"—"}</td></tr>`).join("")}
    </tbody></table></section>
@@ -248,7 +254,7 @@ function render(){
     $("#doneBtn").addEventListener("click",e=>{const was=!!S.done[c.n]; S.done[c.n]=!was; BC.save(); const b=e.currentTarget;
       b.classList.toggle("primary",was); b.setAttribute("aria-pressed",!was); b.textContent=!was?"✓ Finished":"Mark as finished";
       if(!was){ BC.beep("level"); S.xpDone ||= {}; if(!S.xpDone[c.n]){S.xpDone[c.n]=1; BC.addXP(50,"module "+c.n+" finished");}
-        const n=M.filter(x=>S.done[x.n]).length; if(n>=3) BC.badge("roll"); if(n>=9) BC.badge("half"); if(n>=M.length) BC.badge("graduate"); }
+        const n=M.filter(x=>S.done[x.n]).length; if(n>=3) BC.badge("roll"); if(n>=Math.ceil(M.length/2)) BC.badge("half"); if(n>=M.length) BC.badge("graduate"); }
       rail(c.n);});
     $("#quiz").addEventListener("click",e=>{
       if(e.target.id==="resetQuiz"){S.quiz[c.n]={}; BC.save(); render(); setTimeout(()=>$("#quiz")?.scrollIntoView(),0); return;}
