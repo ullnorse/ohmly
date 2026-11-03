@@ -4,10 +4,10 @@ An interactive platform for learning electronics. Free, and it runs entirely in 
 
 Live at **https://ullnorse.github.io/ohmly/**
 
-- 20 modules in four parts (foundations, building, going deeper, schematic to board), from Ohm's law to op amps, microcontrollers, motors, schematics and footprints
-- 30 hands-on labs: animated circuits, an oscilloscope simulator, a filter you can hear, a 555 timer that blinks and plays tones, motors, logic, net tracing, schematic bug hunts, true-size packages and more
+- 22 modules in four parts (foundations, building, going deeper, schematic to board), from Ohm's law to op amps, microcontrollers, motors, schematics, footprints, PCB layout and manufacturing
+- 34 hands-on labs: animated circuits, an oscilloscope simulator, a filter you can hear, a 555 timer that blinks and plays tones, motors, logic, net tracing, schematic bug hunts, true-size packages, trace width, a decoupling loop, DRC hunts, Gerber layers and more
 - 7 arcade games: Color Code Rush, Divider Designer, Gate Detective, Meter Madness, Formula Flashcards, Pop Quiz Roulette, Scope Sleuth
-- 109 quiz questions with explanations, plus XP, levels and badges
+- 121 quiz questions with explanations, plus XP, levels and badges
 - No build step, no dependencies, no tracking. Fonts are bundled.
 
 ## Run it locally
@@ -44,7 +44,7 @@ fonts/            woff2 files + OFL license texts
 js/data.js        course content: modules, ideas, formulas, quizzes
 js/core.js        state, XP, badges, sound, confetti, plotting
 js/problems.js    practice-problem templates, SI answer parser, grading, problem cards
-js/labs.js        the 30 interactive labs
+js/labs.js        the 34 interactive labs
 js/games.js       the arcade games
 js/app.js         views (contents, modules, reference, practice, arcade, logbook, about), routing, settings, backup/import
 og.png            social preview image (1200×630)
