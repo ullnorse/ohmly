@@ -32,7 +32,7 @@ It's a static site, so any static host works.
 **Netlify or Cloudflare Pages**
 Drag the folder onto the Netlify dashboard (app.netlify.com/drop), or connect the repository in Cloudflare Pages with no build command and `/` as the output directory.
 
-`og:image` in `index.html` points at `https://ullnorse.github.io/ohmly/og.png`. Update it if you move to a custom domain.
+`og:image` in `index.html` points at `https://ullnorse.github.io/ohmly/og.png`. Update it, `og:url`, the canonical link and `<base>` in `404.html` if you move to a custom domain.
 
 ## Project layout
 
@@ -47,6 +47,9 @@ js/labs.js        the 27 interactive labs
 js/games.js       the arcade games
 js/app.js         views (contents, modules, arcade, logbook, about), routing, settings, backup/import
 og.png            social preview image (1200×630)
+apple-touch-icon.png  home-screen icon (180×180)
+404.html          not-found page for GitHub Pages
+LICENSE           MIT (code) and CC BY 4.0 (course text)
 ```
 
 ## Editing content
@@ -57,7 +60,7 @@ Progress is stored in `localStorage` under the key `ohmly-v1`. If you change the
 
 ## Before you publish
 
-- **Pick a license.** No license is included yet. A common choice is MIT for the code and CC BY 4.0 for the course text. Add a `LICENSE` file once you decide.
+- **Licence.** `LICENSE` is MIT for the code and CC BY 4.0 for the course text (`js/data.js`). Change it there if you disagree.
 - **Check the name.** Search for existing products called "Ohmly" before you buy a domain.
 - **Book references.** Modules include a short "further reading" line pointing to printed page ranges of *Practical Electronics for Inventors* (4th ed.). It's a plain citation with no excerpts, and the site states it isn't affiliated. Remove the `reading` fields in `data.js` if you'd rather not reference any book.
 

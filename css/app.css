@@ -3,7 +3,7 @@
    "hardware" surfaces that keep their own colors in both themes. */
 :root{
   --bg:#FAFAF7; --surface:#FFFFFF; --sunk:#F0F0EA; --ink:#141414; --muted:#5D5D58; --line:#D8D8D0; --rule:#141414;
-  --accent:#D2321E; --accent-soft:#FBE4DF; --trace:#141414; --trace-soft:#ECECE5;
+  --accent:#D2321E; --accent-soft:#FFF3F0; --trace:#141414; --trace-soft:#ECECE5;
   --good:#1D7A3E; --bad:#C0281C; --warn:#986200;
   --board:#123B2B; --board-edge:#0B2A1E; --copper:#9C7140; --copper-lit:#F0B566; --silk:#ECF2EE; --chip:#1A1D1C; --pinc:#C9CED0;
   --scope-bg:#07130D; --scope-grid:#2C5A43; --phosphor:#7CFFB2;
@@ -207,6 +207,7 @@ ul.ideas li::before{content:"";width:6px;height:6px;margin-top:.62em;background:
 .ctrl label{display:flex;justify-content:space-between;font-size:.84rem;color:var(--muted);gap:8px}
 .ctrl label output{font-family:var(--f-mono);color:var(--ink)}
 .ctrl input[type=range]{width:100%;accent-color:var(--accent)}
+@media (pointer:coarse){.ctrl input[type=range]{height:32px;margin:-8px 0}}
 .ctrl select,.ctrl input[type=number],.ctrl input[type=text],.ctrl input[type=search],textarea{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:0;background:var(--bg)}
 .ctrl select:focus,.ctrl input:focus{border-color:var(--ink)}
 .bigInput{font-family:var(--f-mono);font-size:1.3rem!important;letter-spacing:.1em}
