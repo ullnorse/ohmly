@@ -4,10 +4,19 @@ const BC = window.BC = window.BC || {};
 const KEY = "ohmly-v1";
 
 /* ---------- state ---------- */
-const S = BC.S = {done:{}, quiz:{}, lastCh:null, xp:0, badges:{}, labs:{}, hi:{}, cards:{}, streak:{last:null,n:0}, sound:true, fried:0, scoped:0};
+const isO=v=>!!v&&typeof v==="object"&&!Array.isArray(v), isN=v=>typeof v==="number"&&isFinite(v);
+const nn=v=>isN(v)&&v>=0?v:undefined, bn=v=>typeof v==="boolean"||isN(v)?v:undefined;
+const map=f=>v=>{ if(!isO(v)) return; const o={}; for(const k of Object.keys(v)){ const x=f(v[k]); if(x!==undefined) o[k]=x; } return o; };
+const FIX={done:map(bn), quiz:map(v=>map(bn)(v)), lastCh:v=>v===null||isN(v)?v:undefined, xp:nn, badges:map(nn), labs:map(bn), hi:map(nn), cards:map(nn),
+  streak:v=>isO(v)?{last:typeof v.last==="string"?v.last:null,n:nn(v.n)||0}:undefined, sound:v=>typeof v==="boolean"?v:undefined, fried:nn, scoped:nn,
+  theme:v=>["system","light","dark"].includes(v)?v:undefined, xpDone:map(bn), xpQ:map(bn), xpMax:map(nn), xpOnce:map(bn), xpCard:map(bn)};
+BC.defaults = ()=>({done:{}, quiz:{}, lastCh:null, xp:0, badges:{}, labs:{}, hi:{}, cards:{}, streak:{last:null,n:0}, sound:true, fried:0, scoped:0, xpDone:{}, xpQ:{}, xpMax:{}, xpOnce:{}, xpCard:{}});
+/* type-check every field of untrusted state (storage or import) and merge the valid ones into the defaults */
+BC.sanitize = o=>{ const r=BC.defaults(); if(isO(o)) for(const k of Object.keys(FIX)){ const v=FIX[k](o[k]); if(v!==undefined) r[k]=v; } return r; };
+const S = BC.S = BC.defaults();
 try{
   const raw = localStorage.getItem(KEY);
-  if(raw) Object.assign(S, JSON.parse(raw));
+  if(raw) Object.assign(S, BC.sanitize(JSON.parse(raw)));
 }catch(e){}
 BC.KEY=KEY;
 BC.save = () => { try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} };
@@ -68,18 +77,21 @@ BC.plot = function(cv,opt){
 };
 
 /* ---------- animation loop (per view) ---------- */
-const anims=new Set(); let last=0, running=false;
-BC.anim = fn=>{anims.add(fn); if(!running){running=true; last=performance.now(); requestAnimationFrame(tick);} return ()=>anims.delete(fn);};
+/* live(): optional; under reduced motion the loop only runs while some anim reports live (user-started motion), else one static frame per BC.redraw() */
+const anims=new Map(); let last=0, running=false;
+const go=()=>{ if(!running){running=true; last=performance.now(); requestAnimationFrame(tick);} };
+const runAll=(dt,t)=>anims.forEach((live,fn)=>{ try{ fn(dt,t/1000); }catch(e){ console.error(e); anims.delete(fn);} });
+BC.anim = (fn,live)=>{anims.set(fn,live); if(BC.reduced) BC.redraw(); else go(); return ()=>anims.delete(fn);};
 BC.clearAnims = ()=>anims.clear();
+BC.redraw = ()=>{ if(!BC.reduced) return; requestAnimationFrame(t=>{ runAll(0,t); if([...anims.values()].some(l=>l&&l())) go(); }); };
 function tick(t){
-  const dt=Math.min(0.05,(t-last)/1000); last=t;
-  anims.forEach(fn=>{ try{ fn(dt,t/1000); }catch(e){ console.error(e); anims.delete(fn);} });
-  if(anims.size) requestAnimationFrame(tick); else running=false;
+  const dt=Math.min(0.05,(t-last)/1000); last=t; runAll(dt,t);
+  if(BC.reduced?[...anims.values()].some(l=>l&&l()):anims.size) requestAnimationFrame(tick); else running=false;
 }
 
 /* ---------- sound ---------- */
 let AC=null;
-BC.audio = ()=>{ if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } } if(AC.state==="suspended") AC.resume(); return AC; };
+BC.audio = ()=>{ if(!S.sound){ BC.toast("Sound is off. Turn it on with the speaker button."); return null; } if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } } if(AC.state==="suspended") AC.resume(); return AC; };
 BC.beep = function(kind){
   if(!S.sound) return; const ac=BC.audio(); if(!ac) return;
   const seq={good:[[660,.07],[990,.12]],bad:[[220,.16]],xp:[[880,.05]],level:[[523,.09],[659,.09],[784,.09],[1047,.2]],click:[[1400,.02]],pop:[[90,.25]]}[kind]||[[600,.05]];
@@ -120,6 +132,9 @@ function fxTick(t){
 /* ---------- XP, levels, badges ---------- */
 BC.LEVELS=[[0,"Spark"],[100,"Apprentice"],[250,"Breadboarder"],[450,"Solder Jockey"],[700,"Tinkerer"],[1000,"Circuit Wrangler"],[1400,"Engineer"],[1900,"Inventor"],[2600,"Mad Scientist"]];
 BC.level = xp=>{let i=0; BC.LEVELS.forEach((l,k)=>{if(xp>=l[0]) i=k;}); const cur=BC.LEVELS[i], nxt=BC.LEVELS[i+1]; return {i,name:cur[1],from:cur[0],to:nxt?nxt[0]:cur[0],next:nxt?nxt[1]:null};};
+BC.once = (key,n,why)=>{ if(S.xpOnce[key]) return; S.xpOnce[key]=1; BC.addXP(n,why); };
+/* games: pay only the gain over the best XP this key has paid, so replays can't farm */
+BC.xpBest = (key,n,why)=>{ const g=n-(S.xpMax[key]||0); if(g>0){ S.xpMax[key]=n; BC.addXP(g,why); } };
 BC.addXP = function(n,why){
   const before=BC.level(S.xp).i; S.xp+=n; BC.save();
   BC.toast(`<b class="mono">+${n} XP</b> ${BC.esc(why||"")}`,"xp");
@@ -157,7 +172,7 @@ BC.touchLab = function(id){
 };
 BC.tickStreak = function(){
   const t=BC.today(); if(S.streak.last===t) return;
-  const y=new Date(Date.now()-864e5), ys=y.getFullYear()+"-"+(y.getMonth()+1)+"-"+y.getDate();
+  const y=new Date(); y.setDate(y.getDate()-1); const ys=y.getFullYear()+"-"+(y.getMonth()+1)+"-"+y.getDate();
   S.streak.n = S.streak.last===ys ? S.streak.n+1 : 1; S.streak.last=t; BC.save();
   if(S.streak.n>=3) BC.badge("habit");
 };

@@ -20,13 +20,13 @@ G.rush={title:"Color Code Rush",tag:"60 seconds",desc:"Read as many resistors as
    cur=v; $("#gr-o").innerHTML=BC.shuffle([...set]).map(x=>`<button type="button" data-v="${x}">${fmt(x,"Ω")}</button>`).join("");};
   const end=()=>{live=false; $("#gr-o").innerHTML=""; const h=hi("rush",score); const e=$("#gr-end"); e.hidden=false;
    e.innerHTML=`<h3>${score} resistors read</h3><p>${h.isNew?"New personal best!":"Best: "+h.best}</p>`; $("#gr-go").hidden=false; $("#gr-go").textContent="Play again";
-   if(score>0) BC.addXP(score*3,"Color Code Rush"); if(score>=15) BC.badge("rainbow"); if(h.isNew&&score>5) BC.confetti();};
+   BC.xpBest("rush",score*3,"Color Code Rush"); if(score>=15) BC.badge("rainbow"); if(h.isNew&&score>5) BC.confetti();};
   $("#gr-go").addEventListener("click",()=>{t=60;score=0;combo=0;live=true;$("#gr-end").hidden=true;$("#gr-go").hidden=true;$("#gr-s").textContent="Score 0";$("#gr-c").textContent="";newQ();});
   $("#gr-o").addEventListener("click",e=>{const b=e.target.closest("button"); if(!b||!live) return;
    if(+b.dataset.v===cur){score++;combo++;BC.beep("good");b.classList.add("right");$("#gr-c").textContent=combo>=3?`🔥 ×${combo}`:"";if(combo%5===0)t+=2;}
    else{combo=0;t-=3;BC.beep("bad");b.classList.add("wrong");$("#gr-c").textContent="−3 s";}
    $("#gr-s").textContent="Score "+score; setTimeout(()=>live&&newQ(),220);});
-  BC.anim(dt=>{ if(!live) return; t-=dt; const el=$("#gr-t"); if(!el) return; el.textContent=Math.max(0,t).toFixed(1)+" s"; el.classList.toggle("hot",t<10); if(t<=0) end(); });
+  BC.anim(dt=>{ if(!live) return; t-=dt; const el=$("#gr-t"); if(!el) return; el.textContent=Math.max(0,t).toFixed(1)+" s"; el.classList.toggle("hot",t<10); if(t<=0) end(); },()=>live);
  }};
 
 /* ---------- Divider Designer ---------- */
@@ -40,19 +40,19 @@ G.divider={title:"Divider Designer",tag:"5 rounds",desc:"Pick two standard resis
    <div class="readout"><div class="ro hl"><div class="k">Your Vout</div><div class="v" id="gd-v">—</div></div><div class="ro"><div class="k">Error</div><div class="v" id="gd-e">—</div></div><div class="ro"><div class="k">Current drawn</div><div class="v" id="gd-i">—</div></div></div>
    <button class="btn primary big" type="button" id="gd-lock">Lock it in</button><p class="note" id="gd-n"></p></div>
    <div class="gameEnd" id="gd-end" hidden></div></div>`;
-  let round=0, score=0, errs=[], tgt=null;
-  const newRound=()=>{if(!$("#gd-r")) return; round++; const vin=BC.pick([5,9,12,24]), vo=+BC.pick([1.2,1.8,2.5,3.3,(vin*BC.rand(0.15,0.85)).toFixed(2)]); tgt={vin,vo:Math.min(vo,vin*0.9),imax:round>=4?BC.pick([0.001,0.0005,0.0002]):null};
+  let round=0, score=0, errs=[], tgt=null, locked=false;
+  const newRound=()=>{if(!$("#gd-r")) return; round++; locked=false; $("#gd-lock").disabled=false; const vin=BC.pick([5,9,12,24]), vo=+BC.pick([1.2,1.8,2.5,3.3,(vin*BC.rand(0.15,0.85)).toFixed(2)]); tgt={vin,vo:Math.min(vo,vin*0.9),imax:round>=4?BC.pick([0.001,0.0005,0.0002]):null};
    $("#gd-r").textContent=`Round ${round} / 5`; $("#gd-tg").textContent=`${tgt.vo} V from ${vin} V`; $("#gd-rule").textContent=tgt.imax?`and draw no more than ${fmt(tgt.imax,"A")}`:"no current limit"; $("#gd-n").textContent=""; upd();};
   const upd=()=>{const r1=R[+$("#gd-r1").value], r2=R[+$("#gd-r2").value]; $("#gd-r1-o").textContent=fmt(r1,"Ω"); $("#gd-r2-o").textContent=fmt(r2,"Ω");
    const v=tgt.vin*r2/(r1+r2), I=tgt.vin/(r1+r2), err=Math.abs(v-tgt.vo)/tgt.vo*100; $("#gd-v").textContent=v.toFixed(3)+" V"; $("#gd-e").textContent=err.toFixed(2)+"%";
    const ie=$("#gd-i"); ie.textContent=fmt(I,"A"); ie.style.color=tgt.imax&&I>tgt.imax?"var(--bad)":""; return {v,I,err};};
   host.addEventListener("input",()=>{ if(tgt) upd(); });
-  $("#gd-lock").addEventListener("click",()=>{const {I,err}=upd(); let pts=Math.max(0,Math.round(100-err*15)); let msg=`${err.toFixed(2)}% off: ${pts} points.`;
+  $("#gd-lock").addEventListener("click",()=>{ if(locked) return; locked=true; $("#gd-lock").disabled=true; const {I,err}=upd(); let pts=Math.max(0,Math.round(100-err*15)); let msg=`${err.toFixed(2)}% off: ${pts} points.`;
    if(tgt.imax&&I>tgt.imax){pts=Math.round(pts/3); msg+=" Over the current budget, so points cut to a third. Scale both resistors up by the same factor; the ratio stays the same."; BC.beep("bad");} else BC.beep(pts>80?"good":"xp");
    score+=pts; errs.push(err); $("#gd-s").textContent="Score "+score; $("#gd-n").textContent=msg;
    if(round>=5){ setTimeout(()=>{if(!$("#gd-end")) return; const avg=errs.reduce((a,b)=>a+b,0)/errs.length; const h=hi("divider",score); const e=$("#gd-end"); e.hidden=false;
      e.innerHTML=`<h3>${score} / 500</h3><p>Average error ${avg.toFixed(2)}%. ${h.isNew?"New best!":"Best: "+h.best}</p><button class="btn primary" type="button" id="gd-again">Play again</button>`;
-     BC.addXP(Math.round(score/10),"Divider Designer"); if(avg<2) BC.badge("divider"); if(h.isNew) BC.confetti();
+     BC.xpBest("divider",Math.round(score/10),"Divider Designer"); if(avg<2) BC.badge("divider"); if(h.isNew) BC.confetti();
      $("#gd-again").addEventListener("click",()=>{round=0;score=0;errs=[];e.hidden=true;$("#gd-s").textContent="Score 0";newRound();});},700); }
    else setTimeout(newRound,1300);});
   newRound();
@@ -82,7 +82,7 @@ G.gates={title:"Gate Detective",tag:"6 mystery boxes",desc:"A logic gate is hidd
    else{BC.beep("bad"); $("#gg-n").textContent=`It was ${gate}. Its truth table: ${["00","01","10","11"].map(k=>k+"→"+BC.GATES[gate](+k[0],+k[1])).join("  ")}`;}
    $("#gg-s").textContent="Score "+score;
    if(round>=6) setTimeout(()=>{if(!$("#gg-end")) return; const h=hi("gates",score); const e=$("#gg-end"); e.hidden=false; e.innerHTML=`<h3>${right} of 6 identified · ${score} points</h3><p>${h.isNew?"New best!":"Best: "+h.best}</p><button class="btn primary" type="button" id="gg-again">Play again</button>`;
-     BC.addXP(score*2,"Gate Detective"); if(right===6) BC.badge("detective"); if(h.isNew) BC.confetti();
+     BC.xpBest("gates",score*2,"Gate Detective"); if(right===6) BC.badge("detective"); if(h.isNew) BC.confetti();
      $("#gg-again").addEventListener("click",()=>{round=0;score=0;right=0;e.hidden=true;$("#gg-s").textContent="Score 0";next();});},900);
    else setTimeout(next,1500);});
   next();
@@ -94,17 +94,17 @@ G.cards={title:"Formula Flashcards",tag:"spaced repetition",desc:"Every formula 
  mount(host){
   const deck=[]; BC.DATA.M.forEach(c=>c.formulas.forEach((f,i)=>deck.push({id:c.n+"-"+i,front:f[1],back:f[0],ch:c})));
   host.innerHTML=`<div class="game"><div class="boxes" id="fc-b"></div>
-   <div class="flip" id="fc-card" tabindex="0" role="button" aria-label="Flip card"><div class="face front"><span class="label" id="fc-ch"></span><b id="fc-f"></b><span class="note">What's the formula? Tap to flip.</span></div><div class="face back"><span class="label">Answer</span><b class="mono" id="fc-bk"></b><span class="note" id="fc-bn"></span></div></div>
+   <div class="flip" id="fc-card" tabindex="0" role="button" aria-label="Flip card"><div class="face front"><span class="label" id="fc-ch"></span><b id="fc-f"></b><span class="note">What's the formula? Tap to flip.</span></div><div class="face back" id="fc-back" aria-hidden="true"><span class="label">Answer</span><b class="mono" id="fc-bk"></b><span class="note" id="fc-bn"></span></div></div>
    <div class="row2 center"><button class="btn" type="button" id="fc-again">Again</button><button class="btn primary" type="button" id="fc-got">Got it</button></div>
    <p class="note center" id="fc-n"></p></div>`;
   let cur=null, flipped=false, session=0;
   const box=id=>S.cards[id]||1;
   const bars=()=>{const cnt=[0,0,0,0,0]; deck.forEach(c=>cnt[box(c.id)-1]++); $("#fc-b").innerHTML=cnt.map((n,i)=>`<div class="bx"><div class="bxbar"><i style="height:${n/deck.length*100}%"></i></div><span class="mono">${n}</span><span class="label">Box ${i+1}</span></div>`).join(""); return cnt;};
-  const next=()=>{const w=deck.map(c=>({c,w:Math.pow(0.35,box(c.id)-1)*Math.random()})).filter(x=>x.c!==cur).sort((a,b)=>b.w-a.w); cur=w[0].c; flipped=false; $("#fc-card").classList.remove("flipped");
+  const next=()=>{const w=deck.map(c=>({c,w:Math.pow(0.35,box(c.id)-1)*Math.random()})).filter(x=>x.c!==cur).sort((a,b)=>b.w-a.w); cur=w[0].c; flipped=false; $("#fc-card").classList.remove("flipped"); $("#fc-back").setAttribute("aria-hidden","true");
    $("#fc-ch").textContent=`Module ${cur.ch.n} · ${cur.ch.short} · box ${box(cur.id)}`; $("#fc-f").textContent=cur.front; setTimeout(()=>{$("#fc-bk").textContent=cur.back; $("#fc-bn").textContent="";},150);};
-  const flip=()=>{flipped=!flipped; $("#fc-card").classList.toggle("flipped",flipped); BC.beep("click");};
+  const flip=()=>{flipped=!flipped; $("#fc-card").classList.toggle("flipped",flipped); $("#fc-back").setAttribute("aria-hidden",!flipped); BC.beep("click");};
   $("#fc-card").addEventListener("click",flip); $("#fc-card").addEventListener("keydown",e=>{if(e.key===" "||e.key==="Enter"){e.preventDefault();flip();}});
-  $("#fc-got").addEventListener("click",()=>{ if(!flipped){flip();return;} S.cards[cur.id]=Math.min(5,box(cur.id)+1); BC.save(); session++; BC.beep("good"); if(session%5===0) BC.addXP(10,"5 cards reviewed"); const cnt=bars(); if(cnt[4]>=10) BC.badge("cards"); next();});
+  $("#fc-got").addEventListener("click",()=>{ if(!flipped){flip();return;} S.cards[cur.id]=Math.min(5,box(cur.id)+1); BC.save(); session++; BC.beep("good"); if(!S.xpCard[cur.id]){ S.xpCard[cur.id]=1; BC.save(); if(Object.keys(S.xpCard).length%5===0) BC.addXP(10,"5 new cards learned"); } const cnt=bars(); if(cnt[4]>=10) BC.badge("cards"); next();});
   $("#fc-again").addEventListener("click",()=>{ if(!flipped){flip();return;} S.cards[cur.id]=1; BC.save(); session++; BC.beep("xp"); bars(); next();});
   bars(); next();
  }};
@@ -117,12 +117,12 @@ G.quiz={title:"Pop Quiz Roulette",tag:"10 random questions",desc:"Questions from
   let qs, i, score, streak, best;
   const start=()=>{const all=[]; BC.DATA.M.forEach(c=>c.quiz.forEach(q=>all.push({...q,ch:c}))); qs=BC.shuffle(all).slice(0,10); i=0; score=0; streak=0; best=0; $("#gq-end").hidden=true; show();};
   const show=()=>{const q=qs[i]; $("#gq-r").textContent=`Question ${i+1} / 10`; $("#gq-k").textContent=streak>=2?`streak ×${Math.min(streak,5)}`:"";
-   $("#gq-q").innerHTML=`<span class="label">Module ${q.ch.n} · ${esc(q.ch.title)}</span><div class="qt big">${esc(q.q)}</div><div class="opts">${q.o.map((o,j)=>`<button type="button" data-j="${j}">${esc(o)}</button>`).join("")}</div><div class="why" hidden></div>`;};
+   $("#gq-q").innerHTML=`<span class="label">Module ${q.ch.n} · ${esc(q.ch.title)}</span><div class="qt big">${esc(q.q)}</div><div class="opts">${BC.shuffle(q.o.map((o,j)=>j)).map(j=>`<button type="button" data-j="${j}">${esc(q.o[j])}</button>`).join("")}</div><div class="why" hidden></div>`;};
   host.addEventListener("click",e=>{const b=e.target.closest("#gq-q .opts button"); if(b&&!b.disabled){const q=qs[i], j=+b.dataset.j, ok=j===q.a;
-    $$("#gq-q .opts button").forEach((x,k)=>{x.disabled=true; if(k===q.a) x.classList.add("right"); else if(k===j) x.classList.add("wrong");});
+    $$("#gq-q .opts button").forEach(x=>{x.disabled=true; if(+x.dataset.j===q.a) x.classList.add("right"); else if(x===b) x.classList.add("wrong");});
     if(ok){streak++; best=Math.max(best,streak); const m=Math.min(streak,5); score+=10*m; BC.beep("good");} else {streak=0; BC.beep("bad");}
     $("#gq-s").textContent="Score "+score; const w=$("#gq-q .why"); w.hidden=false; w.innerHTML=`<b>${ok?"Correct.":"Not quite."}</b> ${esc(q.w)} <a href="#m-${q.ch.n}">Review module ${q.ch.n}</a><div><button class="btn primary" type="button" id="gq-next">${i<9?"Next question":"See results"}</button></div>`; return;}
-   if(e.target.id==="gq-next"){ i++; if(i<10) show(); else { $("#gq-q").innerHTML=""; const h=hi("quiz",score); const el=$("#gq-end"); el.hidden=false; el.innerHTML=`<h3>${score} points</h3><p>Longest streak ${best}. ${h.isNew?"New best!":"Best: "+h.best}</p><button class="btn primary" type="button" id="gq-again">Spin again</button>`; BC.addXP(Math.round(score/5),"Pop Quiz Roulette"); if(best>=8) BC.badge("roulette"); if(h.isNew) BC.confetti(); } }
+   if(e.target.id==="gq-next"){ i++; if(i<10) show(); else { $("#gq-q").innerHTML=""; const h=hi("quiz",score); const el=$("#gq-end"); el.hidden=false; el.innerHTML=`<h3>${score} points</h3><p>Longest streak ${best}. ${h.isNew?"New best!":"Best: "+h.best}</p><button class="btn primary" type="button" id="gq-again">Spin again</button>`; BC.xpBest("quiz",Math.round(score/5),"Pop Quiz Roulette"); if(best>=8) BC.badge("roulette"); if(h.isNew) BC.confetti(); } }
    if(e.target.id==="gq-again") start();});
   start();
  }};
@@ -145,7 +145,7 @@ G.meter={title:"Meter Madness",tag:"6 bench jobs",desc:"Set the dial, plug in th
     <button class="btn primary big" type="button" id="mm-go">Measure</button></div>
     <p class="note center" id="mm-n"></p></div><div class="gameEnd" id="mm-end" hidden></div></div>`;
   let i=0, score=0, tries=0, fuses=0;
-  const show=()=>{const j=JOBS[i]; $("#mm-r").textContent=`Job ${i+1} / ${JOBS.length}`; $("#mm-job").innerHTML=`<span class="label">The job</span><b>${esc(j.t)}</b>`; $("#mm-lcd").textContent="----"; $("#mm-lcd").className="lcd mono"; $("#mm-n").textContent=""; tries=0;};
+  const show=()=>{const j=JOBS[i]; $("#mm-r").textContent=`Job ${i+1} / ${JOBS.length}`; $("#mm-job").innerHTML=`<span class="label">The job</span><b>${esc(j.t)}</b>`; $("#mm-lcd").textContent="----"; $("#mm-lcd").className="lcd mono"; $("#mm-n").textContent=""; tries=0; $("#mm-go").disabled=false;};
   const judge=(j,s)=>{
    const ammeterJack=s.jack!=="vo";
    if(ammeterJack && s.conn==="across" && s.pwr==="on") return {fuse:true,msg:"BANG. In a current jack the meter is nearly a short circuit. Placed across a powered part, it shorted the supply and blew its fuse. Current is always measured in series."};
@@ -161,12 +161,12 @@ G.meter={title:"Meter Madness",tag:"6 bench jobs",desc:"Set the dial, plug in th
    if(j.kind==="r"&&s.dial==="cont") return {msg:"It beeps or stays silent, but continuity doesn't give you a value. Use Ω."};
    if(j.kind==="c"&&s.dial==="ohm") return {ok:true,soft:"Works: a good fuse reads near 0 Ω. Continuity mode is quicker because it beeps."};
    return {msg:"That setup doesn't measure what the job asks for. Think about what quantity you need, then where the meter has to sit."};};
-  $("#mm-go").addEventListener("click",()=>{const j=JOBS[i]; const s={dial:$("#mm-dial").value,jack:$("#mm-jack").value,conn:$("#mm-conn").value,pwr:$("#mm-pwr").value}; tries++;
+  $("#mm-go").addEventListener("click",()=>{if($("#mm-go").disabled) return; const j=JOBS[i]; const s={dial:$("#mm-dial").value,jack:$("#mm-jack").value,conn:$("#mm-conn").value,pwr:$("#mm-pwr").value}; tries++;
    const r=judge(j,s), lcd=$("#mm-lcd"), n=$("#mm-n");
    if(r.fuse){fuses++; $("#mm-f").textContent="Fuses blown "+fuses; lcd.textContent="FUSE"; lcd.className="lcd mono dead"; n.className="note center bad"; n.textContent=r.msg; BC.beep("pop"); BC.badge("fuse"); host.querySelector(".meterBody").classList.add("shake"); setTimeout(()=>host.querySelector(".meterBody")?.classList.remove("shake"),400); return;}
    if(!r.ok){lcd.textContent=s.pwr==="on"&&s.conn==="series"&&s.jack==="vo"?"8.97 V":"0.00"; lcd.className="lcd mono"; n.className="note center warn"; n.textContent=r.msg; BC.beep("bad"); return;}
-   const pts=Math.max(1,4-tries); score+=pts; lcd.textContent=j.read; lcd.className="lcd mono good"; n.className="note center good"; n.textContent=(r.soft||"Correct setup.")+` +${pts} points.`; BC.beep("good"); $("#mm-s").textContent="Score "+score;
-   setTimeout(()=>{ if(!$("#mm-r")) return; i++; if(i<JOBS.length) show(); else { const h=hi("meter",score); const e=$("#mm-end"); e.hidden=false; e.innerHTML=`<h3>${score} / ${JOBS.length*3} points</h3><p>${fuses?`${fuses} fuse${fuses>1?"s":""} blown along the way.`:"No fuses blown. Safe hands."} ${h.isNew?"New best!":"Best: "+h.best}</p><button class="btn primary" type="button" id="mm-again">Play again</button>`; BC.addXP(score*3,"Meter Madness"); if(!fuses) BC.badge("meter"); if(h.isNew) BC.confetti(); $("#mm-again").addEventListener("click",()=>{i=0;score=0;fuses=0;e.hidden=true;$("#mm-s").textContent="Score 0";$("#mm-f").textContent="Fuses blown 0";show();}); } },1500);});
+   $("#mm-go").disabled=true; const pts=Math.max(1,4-tries); score+=pts; lcd.textContent=j.read; lcd.className="lcd mono good"; n.className="note center good"; n.textContent=(r.soft||"Correct setup.")+` +${pts} points.`; BC.beep("good"); $("#mm-s").textContent="Score "+score;
+   setTimeout(()=>{ if(!$("#mm-r")) return; i++; if(i<JOBS.length) show(); else { const h=hi("meter",score); const e=$("#mm-end"); e.hidden=false; e.innerHTML=`<h3>${score} / ${JOBS.length*3} points</h3><p>${fuses?`${fuses} fuse${fuses>1?"s":""} blown along the way.`:"No fuses blown. Safe hands."} ${h.isNew?"New best!":"Best: "+h.best}</p><button class="btn primary" type="button" id="mm-again">Play again</button>`; BC.xpBest("meter",score*3,"Meter Madness"); if(!fuses) BC.badge("meter"); if(h.isNew) BC.confetti(); $("#mm-again").addEventListener("click",()=>{i=0;score=0;fuses=0;e.hidden=true;$("#mm-s").textContent="Score 0";$("#mm-f").textContent="Fuses blown 0";show();}); } },1500);});
   show();
  }};
 /* ---------- Scope Sleuth ---------- */

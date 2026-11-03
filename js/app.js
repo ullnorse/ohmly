@@ -134,11 +134,12 @@ function moduleView(c){
   ${c.reading?`<p class="reading">Further reading: <i>${esc(D.BOOK.title)}</i>, ${esc(D.BOOK.ed)}, ${esc(c.reading)}. Ohmly isn't affiliated with the book or its publisher.</p>`:""}
   <nav class="pager" aria-label="Module navigation">${prev?`<a href="#m-${prev.n}"><span>← ${pad(prev.n)}</span>${esc(prev.title)}</a>`:`<a href="#home"><span>←</span>Contents</a>`}${next?`<a href="#m-${next.n}" class="r"><span>${pad(next.n)} →</span>${esc(next.title)}</a>`:`<a href="#arcade" class="r"><span>→</span>Arcade</a>`}</nav>`;
 }
+let qperm=[]; // shuffled option order per question, fresh each render; stored answers use the original index
 function quizItem(c,q,i){
   const qs=S.quiz[c.n]||{}, st=qs[i], ans=qs["p"+i];
-  return `<fieldset class="q" data-i="${i}"><legend class="qt">${c.n}.${i+1}  ${esc(q.q)}</legend><div class="opts">${q.o.map((o,j)=>{
+  return `<fieldset class="q" data-i="${i}"><legend class="qt">${c.n}.${i+1}  ${esc(q.q)}</legend><div class="opts">${(qperm[i]=BC.shuffle(q.o.map((o,j)=>j))).map(j=>{
     let cls=""; if(st!==undefined){ if(j===q.a) cls="right"; else if(ans===j) cls="wrong"; }
-    return `<button type="button" data-j="${j}" class="${cls}" ${st!==undefined?"disabled":""}>${esc(o)}${cls==="right"?' <span class="sr">(correct answer)</span>':cls==="wrong"?' <span class="sr">(your answer)</span>':""}</button>`;}).join("")}</div>
+    return `<button type="button" data-j="${j}" class="${cls}" ${st!==undefined?"disabled":""}>${esc(q.o[j])}${cls==="right"?' <span class="sr">(correct answer)</span>':cls==="wrong"?' <span class="sr">(your answer)</span>':""}</button>`;}).join("")}</div>
     <div class="why" ${st===undefined?"hidden":""} aria-live="polite"><b>${st?"Right.":"Not quite."}</b> ${esc(q.w)}</div></fieldset>`;
 }
 
@@ -196,7 +197,7 @@ function about(){
 function backupJSON(){ return JSON.stringify({app:"ohmly",v:1,saved:new Date().toISOString(),state:S}); }
 function importBackup(txt){
   try{ const o=JSON.parse(txt); const st=o&&o.app==="ohmly"?o.state:o; if(!st||typeof st!=="object"||typeof st.xp!=="number") throw new Error("bad");
-    Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,{done:{},quiz:{},xp:0,badges:{},labs:{},hi:{},cards:{},streak:{last:null,n:0},sound:true},st); BC.save(); applyTheme(); render();
+    Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,BC.sanitize(st)); BC.save(); applyTheme(); render();
     const m=$("#impMsg"); if(m){m.className="note good"; m.textContent=`Imported: ${S.xp} XP, ${Object.keys(S.badges).length} badges.`;} }
   catch(e){ const m=$("#impMsg"); if(m){m.className="note bad"; m.textContent="That isn't an Ohmly backup. Make sure you copied all of it, from the first { to the last }.";} }
 }
@@ -204,9 +205,10 @@ function importBackup(txt){
 /* ---------- router ---------- */
 function render(){
   BC.leave.forEach(f=>{try{f();}catch(e){}}); BC.leave.length=0; BC.clearAnims();
-  const h=location.hash.replace("#","")||"home"; const v=$("#view"); let m, title="Ohmly";
-  if((m=/^m-(\d+)$/.exec(h)) && M[+m[1]-1]){
-    const c=M[+m[1]-1]; currentKey=c.n; S.lastCh=c.n; BC.save(); v.innerHTML=moduleView(c); title=`${pad(c.n)} ${c.title} · Ohmly`;
+  const h=location.hash.replace("#","")||"home"; const v=$("#view"); let m, title="Ohmly", lab=null;
+  const cm=(m=/^m-(\d+)$/.exec(h))?M[+m[1]-1]:(m=/^lab-(\w+)$/.exec(h))?M.find(c=>c.labs.includes(m[1])):null; if(cm&&m[0].startsWith("lab")) lab=m[1];
+  if(cm){
+    const c=cm; currentKey=c.n; S.lastCh=c.n; BC.save(); v.innerHTML=moduleView(c); title=`${pad(c.n)} ${c.title} · Ohmly`;
     if(c.labs.length){const host=$("#labs"); c.labs.forEach((k,i)=>BC.mountLab(k,host,`${c.n}.${i+1}`));}
     $$(".labJump").forEach(a=>a.addEventListener("click",e=>{e.preventDefault(); const t=$(a.getAttribute("href")); if(t){t.scrollIntoView({behavior:BC.reduced?"auto":"smooth",block:"start"}); t.setAttribute("tabindex","-1"); t.focus({preventScroll:true});}}));
     $("#doneBtn").addEventListener("click",e=>{const was=!!S.done[c.n]; S.done[c.n]=!was; BC.save(); const b=e.currentTarget;
@@ -219,7 +221,7 @@ function render(){
       const b=e.target.closest(".opts button"); if(!b||b.disabled) return;
       const qd=b.closest(".q"), i=+qd.dataset.i, j=+b.dataset.j, q=c.quiz[i], ok=j===q.a;
       const qs=(S.quiz[c.n] ||= {}); S.xpQ ||= {}; const first=!S.xpQ[c.n+"-"+i]; S.xpQ[c.n+"-"+i]=1; qs[i]=ok; qs["p"+i]=j; BC.save();
-      qd.querySelectorAll(".opts button").forEach((x,k)=>{x.disabled=true; if(k===q.a){x.classList.add("right"); x.insertAdjacentHTML("beforeend",' <span class="sr">(correct answer)</span>');} else if(k===j){x.classList.add("wrong"); x.insertAdjacentHTML("beforeend",' <span class="sr">(your answer)</span>');}});
+      qd.querySelectorAll(".opts button").forEach(x=>{const k=+x.dataset.j; x.disabled=true; if(k===q.a){x.classList.add("right"); x.insertAdjacentHTML("beforeend",' <span class="sr">(correct answer)</span>');} else if(k===j){x.classList.add("wrong"); x.insertAdjacentHTML("beforeend",' <span class="sr">(your answer)</span>');}});
       const w=qd.querySelector(".why"); w.hidden=false; w.innerHTML=`<b>${ok?"Right.":"Not quite."}</b> ${esc(q.w)}`;
       if(ok){ BC.beep("good"); if(first) BC.addXP(10,"correct answer"); BC.badge("first-light"); }
       else { BC.beep("bad"); qd.classList.add("shake"); setTimeout(()=>qd.classList.remove("shake"),400); }
@@ -244,22 +246,25 @@ function render(){
     $("#impGo").addEventListener("click",()=>importBackup($("#impText").value));
     $("#reset").addEventListener("click",()=>{$("#resetConfirm").hidden=false; $("#resetNo").focus();});
     $("#resetNo").addEventListener("click",()=>{$("#resetConfirm").hidden=true; $("#reset").focus();});
-    $("#resetYes").addEventListener("click",()=>{const keep={sound:S.sound,theme:S.theme}; Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,{done:{},quiz:{},lastCh:null,xp:0,badges:{},labs:{},hi:{},cards:{},streak:{last:null,n:0}},keep); BC.save(); render(); $("#impMsg").className="note good"; $("#impMsg").textContent="All progress erased.";});
-  } else { currentKey="home"; v.innerHTML=home(); title="Ohmly · An interactive platform for learning electronics"; BC.mountHero($("#heroHost")); }
+    $("#resetYes").addEventListener("click",()=>{const keep={sound:S.sound,theme:S.theme}; Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,BC.defaults(),keep); BC.save(); render(); $("#impMsg").className="note good"; $("#impMsg").textContent="All progress erased.";});
+  } else if(h==="home"||h==="view"){ currentKey="home"; v.innerHTML=home(); title="Ohmly · An interactive platform for learning electronics"; BC.mountHero($("#heroHost")); }
+  else { currentKey="404"; v.innerHTML=`<header class="stack"><h1 tabindex="-1">Not found</h1><p class="lede muted">There is nothing at this address. <a href="#home">Back to the contents</a>.</p></header>`; title="Not found · Ohmly"; }
   document.title=title; rail(currentKey); header(); window.scrollTo(0,0);
-  const h1=$("#view h1"); if(h1&&routed) h1.focus({preventScroll:true});
+  const lt=lab&&$("#lab-"+lab);
+  if(lt){ lt.scrollIntoView({behavior:"auto",block:"start"}); lt.setAttribute("tabindex","-1"); lt.focus({preventScroll:true}); }
+  else { const h1=$("#view h1"); if(h1&&routed) h1.focus({preventScroll:true}); }
   routed=true;
   $("#rail").classList.remove("open"); $("#railToggle").setAttribute("aria-expanded","false");
 }
 let routed=false;
-const rerun=()=>{$$(".lab").forEach(l=>l._run&&l._run());};
+const rerun=()=>{$$(".lab").forEach(l=>l._run&&l._run()); BC.redraw();};
 
 $("#railToggle").addEventListener("click",()=>{const r=$("#rail"),o=!r.classList.contains("open"); r.classList.toggle("open",o); $("#railToggle").setAttribute("aria-expanded",o);});
 $("#soundBtn").addEventListener("click",()=>{S.sound=!S.sound; BC.save(); header(); if(S.sound) BC.beep("good");});
 $("#themeBtn").addEventListener("click",()=>{const order=["system","light","dark"]; S.theme=order[(order.indexOf(S.theme||"system")+1)%3]; BC.save(); applyTheme(); header(); rerun(); BC.toast("Theme: "+({system:"match my device",light:"light",dark:"dark"})[S.theme]);});
-window.addEventListener("hashchange",render);
+window.addEventListener("hashchange",()=>{ if(location.hash==="#view"){ $("#view").focus(); return; } render(); });
 let rt; window.addEventListener("resize",()=>{clearTimeout(rt); rt=setTimeout(()=>{rerun(); const p=$("#pcb"); if(p&&+p.dataset.cols!==(innerWidth<700?3:6)) p.outerHTML=pcbMap();},150);});
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",rerun);
 BC.tickStreak();
-render();
+try{ render(); }catch(e){ console.error(e); const keep=S.theme; Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,BC.defaults()); if(keep) S.theme=keep; BC.save(); history.replaceState(null,"",location.pathname); render(); }
 })();
