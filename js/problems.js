@@ -336,7 +336,39 @@ const T={
  ()=>{ const [pk,p,ws]=pick([["SOIC",1.27,[0.55,0.6,0.65]],["TSSOP",0.65,[0.35,0.4,0.45]],["QFN",0.5,[0.25,0.28,0.3]],["QFN",0.4,[0.2,0.22,0.25]],["SOT-23-6",0.95,[0.55,0.6]]]), w=pick(ws), gap=p-w;
    return {q:`A ${pk} footprint has pads ${w} mm wide at ${p} mm pitch. How wide is the copper gap between neighbouring pads, in millimetres?`, ans:gap, unit:"mm", si:false,
      steps:[`Pitch runs centre to centre, so the gap is the pitch minus one pad width.`,`Gap = ${p} mm − ${w} mm = ${+gap.toPrecision(3)} mm.`,`Solder mask between the pads has to fit in this gap, and fabs set a minimum width for it. Check yours before choosing pads.`]}; }
+],
+21:[
+ ()=>{ let I,dT,oz,ext,k,A,t,wmil,w; do{ I=pick([0.25,0.5,0.75,1,1.5,2,3,4,5]); dT=pick([5,10,20,30]); oz=pick([0.5,1,2]); ext=pick([true,false]); k=ext?0.048:0.024;
+     A=Math.pow(I/(k*Math.pow(dT,0.44)),1/0.725); t=1.378*oz; wmil=A/t; w=wmil*0.0254; }while(w<0.1||w>8);
+   return {q:`By IPC-2221, how wide must a trace on an ${ext?"outer":"inner"} layer be to carry ${f(I,"A")} with a ${dT} °C rise, in ${oz} oz copper? Give the width in millimetres.`, ans:w, unit:"mm", si:false,
+     steps:[`Area: A = (I / (k · ΔT^0.44))^(1/0.725) with k = ${k} for an ${ext?"outer":"inner"} layer.`,`A = (${I} / (${k} × ${dT}^0.44))^1.379 = ${+A.toPrecision(3)} mil².`,`Thickness: ${oz} oz × 1.378 mil = ${+t.toPrecision(3)} mil, so w = ${+A.toPrecision(3)} / ${+t.toPrecision(3)} = ${+wmil.toPrecision(3)} mil.`,`w = ${+wmil.toPrecision(3)} mil × 0.0254 mm/mil = ${+w.toPrecision(3)} mm. Round up, and never below your fab's minimum.`]}; },
+ ()=>{ let w,Lm,oz,I,R,V; do{ w=pick([0.15,0.2,0.25,0.3,0.4,0.5,0.8,1,1.5,2]); Lm=pick([10,20,30,50,80,100,150,200]); oz=pick([1,2]); I=pick([0.05,0.1,0.2,0.5,1,2,3]); R=1.72e-8*Lm*1e-3/(w*1e-3*35e-6*oz); V=I*R; }while(V<1e-3||V>1);
+   return {q:`A ${w} mm wide, ${Lm} mm long trace in ${oz} oz copper (${35*oz} µm) carries ${f(I,"A")}. Using ρ = 1.72 × 10⁻⁸ Ω·m, what voltage does it drop, in volts?`, ans:V, unit:"V",
+     steps:[`R = ρ · L / (w · t) = 1.72 × 10⁻⁸ Ω·m × ${Lm} mm / (${w} mm × ${35*oz} µm).`,`Cross-section: ${w} mm × ${35*oz} µm = ${+(w*0.035*oz).toPrecision(3)} mm², so R = ${f(R,"Ω")}.`,`V = ${f(I,"A")} × ${f(R,"Ω")} = ${f(V,"V")}, and the trace dissipates ${f(I*V,"W")}.`]}; },
+ ()=>{ const L=pick([0.5,0.8,1,1.5,2,3,5,8,10])*1e-9, fr=pick([10,20,50,100,200,500])*1e6, X=2*Math.PI*fr*L;
+   return {q:`A decoupling capacitor's loop has about ${f(L,"H")} of inductance. What impedance does that inductance alone present at ${f(fr,"Hz")}, in ohms?`, ans:X, unit:"Ω",
+     steps:[`X_L = 2π · f · L.`,`X_L = 2π × ${f(fr,"Hz")} × ${f(L,"H")} = ${f(X,"Ω")}.`,`At these frequencies a 100 nF capacitor's own reactance is far smaller, so the loop sets the impedance.`]}; },
+ ()=>{ const C=pick([10e-9,22e-9,47e-9,100e-9,220e-9,1e-6]), L=pick([0.5,0.8,1,1.5,2,3,5])*1e-9, fr=1/(2*Math.PI*Math.sqrt(L*C));
+   return {q:`A ${f(C,"F")} capacitor sits in a loop with ${f(L,"H")} of inductance, its own included. At what frequency does it self-resonate, in hertz?`, ans:fr, unit:"Hz",
+     steps:[`f = 1 / (2π · √(L · C)).`,`√(L · C) = √(${f(L,"H")} × ${f(C,"F")}) = ${f(Math.sqrt(L*C),"s")}.`,`f = 1 / (2π × ${f(Math.sqrt(L*C),"s")}) = ${f(fr,"Hz")}. Above this the capacitor behaves as an inductor.`]}; }
+],
+22:[
+ ()=>{ const d=pick([0.2,0.25,0.3,0.4,0.5,0.6,0.8,1.0,1.2]), r=pick([0.05,0.075,0.1,0.125,0.15,0.2,0.25,0.3,0.4]), pad=+(d+2*r).toFixed(3), ring=+((pad-d)/2).toFixed(4);
+   return {q:`A hole drilled ${d} mm sits in a ${pad} mm round pad. What is the annular ring, in millimetres?`, ans:ring, unit:"mm", si:false,
+     steps:[`The ring is the copper left on each side: ring = (pad − drill) / 2.`,`Ring = (${pad} mm − ${d} mm) / 2 = ${ring} mm.`,`The drill can land off-centre, so the narrowest point can be less than ${ring} mm. Fabs set a minimum ring for that reason.`]}; },
+ ()=>{ let w1,w2,dd,g; do{ w1=pick([0.15,0.2,0.25,0.3,0.4,0.5]); w2=pick([0.15,0.2,0.25,0.3,0.4,0.5]); dd=pick([0.3,0.35,0.4,0.45,0.5,0.6,0.7,0.8,1.0]); g=+(dd-(w1+w2)/2).toFixed(4); }while(g<0.05);
+   return {q:`Two parallel traces, ${w1} mm and ${w2} mm wide, have their centres ${dd} mm apart. How wide is the copper gap between them, in millimetres?`, ans:g, unit:"mm", si:false,
+     steps:[`Each trace extends half its width from its centre line: ${w1/2} mm and ${w2/2} mm.`,`Gap = ${dd} mm − (${w1} mm + ${w2} mm) / 2 = ${dd} mm − ${+((w1+w2)/2).toFixed(3)} mm = ${g} mm.`,`${g>=0.127?`That passes a typical 0.127 mm (5 mil) clearance rule.`:`That is below a typical 0.127 mm (5 mil) clearance rule; DRC would flag it.`}`]}; },
+ ()=>{ let bx,by,P,r,g,nx,ny; do{ bx=pick([12,15,18,20,22,25,30,35,40,50]); by=pick([10,12,15,18,20,25,30,40]); P=pick([80,100,150]); r=pick([0,3,5]); g=pick([0,2]); const U=P-2*r; nx=Math.floor((U+g)/(bx+g)); ny=Math.floor((U+g)/(by+g)); }while(nx*ny<2);
+   const U=P-2*r;
+   return {q:`${bx} × ${by} mm boards go on a ${P} × ${P} mm panel with ${r?r+" mm rails on every side":"no rails"} and ${g?g+" mm gaps between boards":"V-scores with no gap"}. Without rotating any board, how many fit?`, ans:nx*ny, unit:"boards", si:false, tol:0,
+     steps:[`Usable length: ${P} mm − 2 × ${r} mm = ${U} mm in each direction.`,`n = ⌊(usable + gap) / (board + gap)⌋. Along X: ⌊${U+g} / ${bx+g}⌋ = ${nx}. Along Y: ⌊${U+g} / ${by+g}⌋ = ${ny}.`,`${nx} × ${ny} = ${nx*ny} boards.`]}; },
+ ()=>{ let r,dl,res; do{ r=pick([0,90,180,270]); dl=pick([90,180,270]); res=(r+dl)%360; }while(res===0);
+   const ref=pick(["U3","Q2","D4","U7","LED1"]);
+   return {q:`The placement file lists ${ref} at ${r}°. In the assembler's preview, ${ref} must turn a further ${dl}° counterclockwise to match its footprint. Rotations are counterclockwise, from 0 to 359°. What rotation do you enter, in degrees?`, ans:res, unit:"degrees", si:false, tol:0,
+     steps:[`Add the correction: ${r}° + ${dl}° = ${r+dl}°.`,r+dl>=360?`Subtract a full turn to stay below 360°: ${r+dl}° − 360° = ${res}°.`:`That is already between 0 and 359°: ${res}°.`,`Note the offset for this footprint; the next order with the same part needs it too.`]}; }
 ]
+
 
 };
 BC.PROBLEMS=T;
