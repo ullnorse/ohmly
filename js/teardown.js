@@ -2,7 +2,7 @@
    Board geometry: data/ull-pocket.json, made by tools/kicad2ohmly.py from the KiCad file and fetched on first visit.
    Content below: blocks, part cards, net notes and design notes. Everything on the board is addressed by ref ("U7")
    or net name ("+3V3"); the view state is a set of highlighted refs and nets, so later layers (time axis, stories,
-   probe) can drive it through BC.TD.show({refs, nets}). */
+   probe, in teardown-time.js) drive it through BC.TD.show({refs, nets}). */
 (function(){
 const BC=window.BC, {$,$$,esc}=BC;
 const TD=BC.TD={};
@@ -239,6 +239,7 @@ TD.page=()=>`<header class="stack tdHead"><h1 tabindex="-1">Teardown</h1><p clas
    </div>
    <p class="tdHover label" id="tdHover">Drag to pan, wheel or pinch to zoom.</p>
   </section>
+  ${TD.timeHTML?TD.timeHTML():""}
   <aside class="tdPane tdCard" id="tdCard" aria-label="Details" aria-live="polite"></aside>
   <div class="tdTabs" role="group" aria-label="Panels"><button type="button" class="btn" data-sheet="list" aria-expanded="false" aria-controls="tdList">Parts</button><button type="button" class="btn" data-sheet="card" aria-expanded="false" aria-controls="tdCard">Details</button></div>
  </div>
@@ -256,6 +257,7 @@ function open(arg,fromHash){
   if(k==="net"&&BD.netIx[v]!==undefined) selNet(BD.netIx[v],{fromHash});
   else if(k==="note"&&TD.NOTES[+v-1]) selNote(+v-1,{fromHash,zoom:true});
   else if(k==="part"&&hasPart(v)) selPart(v,{fromHash,zoom:true});
+  else if(k==="story"&&TD.storyOpen&&TD.storyOpen(v,fromHash)) card();
   else card();
 }
 
@@ -266,7 +268,7 @@ function build(host){
   pins.innerHTML=TD.NOTES.map((n,i)=>`<button type="button" class="tdPin" data-note="${i}" aria-label="Design note ${i+1}: ${esc(n.t)}" title="${esc(n.t)}">${i+1}</button>`).join("");
   $("#tdLayers").innerHTML=[["F.Cu","F.Cu","F"],["In1.Cu","In1","I1"],["In2.Cu","In2","I2"],["B.Cu","B.Cu","B"],["silk","Silk","S"],["zones","Zones","Z"],["refs","Refs","R"]]
     .map(([k,l,c])=>`<label class="tdTog tdTog${c}"><input type="checkbox" data-layer="${k}"${st.show[k]?" checked":""}><i aria-hidden="true"></i>${l}</label>`).join("");
-  list(); applyShow(); fit(); bind(host);
+  list(); applyShow(); fit(); bind(host); if(TD.timeMount) TD.timeMount(host);
 }
 
 /* ---------- part list ---------- */
@@ -276,23 +278,29 @@ function list(){
       const key=[r,f.val,TD.title(r),f.mpn,f.desc].join(" ").toLowerCase();
       return `<li data-k="${esc(key)}"><button type="button" class="tdItem" data-ref="${r}"><span class="mono">${r}</span><span>${esc(TD.title(r))}</span></button></li>`; }).join("")}</ul></section>`; }).join("");
   $("#tdList").innerHTML=`<div class="ctrl"><label for="tdQ"><span>Find a part</span></label><input type="search" id="tdQ" placeholder="U7, LDO, 100n, SHT40…" autocomplete="off"></div>
-   <section class="tdGrp tdNotesL"><h3>Design notes <span class="label">${TD.NOTES.length}</span></h3><ol>${TD.NOTES.map((n,i)=>`<li><button type="button" class="tdItem" data-note="${i}"><span class="mono">${i+1}</span><span>${esc(n.t)}</span></button></li>`).join("")}</ol></section>
+   ${TD.storyList?TD.storyList():""}<section class="tdGrp tdNotesL"><h3>Design notes <span class="label">${TD.NOTES.length}</span></h3><ol>${TD.NOTES.map((n,i)=>`<li><button type="button" class="tdItem" data-note="${i}"><span class="mono">${i+1}</span><span>${esc(n.t)}</span></button></li>`).join("")}</ol></section>
    ${groups}<p class="muted tdNone" id="tdNone" hidden>No part matches that.</p>`;
   $("#tdQ").addEventListener("input",e=>{ const q=e.target.value.trim().toLowerCase(); let any=false;
     $$("#tdList .tdGrp[data-b]").forEach(g=>{ let n=0; $$("li",g).forEach(li=>{ const ok=!q||li.dataset.k.includes(q); li.hidden=!ok; n+=ok; }); g.hidden=!n; any=any||n>0; });
-    $(".tdNotesL").hidden=!!q; $("#tdNone").hidden=any; });
+    $$(".tdNotesL,.tdStoriesL").forEach(s=>s.hidden=!!q); $("#tdNone").hidden=any; });
 }
 
 /* ---------- selection ---------- */
 function setHash(h){ try{ history.replaceState(null,"","#teardown"+(h?"/"+h:"")); }catch(e){} }
 function selPart(r,o={}){ st.sel={k:"part",id:r}; st.refs=new Set([r]); st.nets=new Set(); paint(); card(); if(!o.fromHash) setHash(encodeURIComponent(r)); if(o.zoom) zoomTo(BD.ref[r].bb,o.fromHash); after(o); }
-function selNet(n,o={}){ st.sel={k:"net",id:n}; st.refs=new Set(); st.nets=new Set([n]); paint(); card(); if(!o.fromHash) setHash("net/"+encodeURIComponent(BD.nets[n])); after(o); }
+function selNet(n,o={}){ st.sel={k:"net",id:n}; st.refs=new Set(); st.nets=new Set([n]); paint(); card(); if(!o.fromHash) setHash("net/"+encodeURIComponent(BD.nets[n])); after(o); if(TD.onNet) TD.onNet(n); }
 function selNote(i,o={}){ const N=TD.NOTES[i]; st.sel={k:"note",id:i}; st.refs=new Set(N.refs.filter(hasPart)); st.nets=new Set(N.nets.map(n=>BD.netIx[n]).filter(n=>n!==undefined)); paint(); card();
   if(!o.fromHash) setHash("note/"+(i+1)); if(o.zoom&&(N.fit||st.refs.size)) zoomTo(N.fit||bbOf([...st.refs]),o.fromHash); after(o); }
 function clearSel(){ st.sel=null; st.refs=new Set(); st.nets=new Set(); paint(); card(); setHash(""); }
-function after(o){ if(!o.fromHash) BC.beep("click"); if(o.sheet!==false&&!o.fromHash&&phone()) sheet("card"); }
+function after(o){ if(!o.fromHash) BC.beep("click"); if(o.sheet!==false&&!o.fromHash&&phone()&&!TD.probing) sheet("card"); }
 /* public: highlight any set of parts and nets (for stories and the probe) */
 TD.show=({refs=[],nets=[]}={})=>{ if(!BD) return; st.refs=new Set(refs.filter(hasPart)); st.nets=new Set(nets.map(n=>typeof n==="number"?n:BD.netIx[n]).filter(n=>n!==undefined)); paint(); };
+/* for the time half: frame parts on the board, net names, the hash, the phone sheet */
+TD.focus=(refs,instant)=>{ const r=refs.filter(hasPart).filter(x=>!/^ASSY/.test(x)); if(BD&&stage&&r.length) zoomTo(bbOf(r),instant); };
+TD.netName=n=>typeof n==="number"?BD.nets[n]:n;
+TD.setHash=h=>setHash(h);
+TD.phone=()=>phone();
+TD.sheet=w=>sheet(w);
 const bbOf=refs=>{ const b=[1e9,1e9,-1e9,-1e9]; refs.forEach(r=>{ const q=BD.ref[r].bb; b[0]=Math.min(b[0],q[0]); b[1]=Math.min(b[1],q[1]); b[2]=Math.max(b[2],q[2]); b[3]=Math.max(b[3],q[3]); }); return b; };
 
 /* highlight overlay: copies of the selected copper drawn on top; the base board dims */
@@ -431,7 +439,7 @@ function describe(h){ if(!h) return "Drag to pan, wheel or pinch to zoom.";
   return `${netName(BD.nets[h.n])} · ${h.what}`; }
 function clickAt(x,y){ const h=hit(x,y);
   if(!h){ clearSel(); return; }
-  if(h.k==="pad"){ const on=st.sel&&st.sel.k==="part"&&st.sel.id===h.f.ref; if(on&&h.p[7]) selNet(h.p[7]); else selPart(h.f.ref); }
+  if(h.k==="pad"){ const on=st.sel&&st.sel.k==="part"&&st.sel.id===h.f.ref; if((on||TD.probing)&&h.p[7]) selNet(h.p[7]); else selPart(h.f.ref); }
   else if(h.k==="part") selPart(h.f.ref); else selNet(h.n); }
 
 /* ---------- events ---------- */
