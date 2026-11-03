@@ -60,7 +60,7 @@ G.divider={title:"Divider Designer",tag:"5 rounds",desc:"Pick two standard resis
 
 /* ---------- Gate Detective ---------- */
 G.gates={title:"Gate Detective",tag:"6 mystery boxes",desc:"A logic gate is hidden in a box. Flip the inputs, watch the output, and name the gate in as few probes as you can.",
- art:`<svg viewBox="0 0 120 50" aria-hidden="true"><rect x="34" y="6" width="52" height="38" rx="4" fill="currentColor" opacity=".9"/><text x="60" y="32" text-anchor="middle" font-family="Bricolage Grotesque" font-size="22" fill="var(--surface)">?</text><path d="M4 18h30M4 32h30M86 25h30" stroke="currentColor" stroke-width="2.5"/></svg>`,
+ art:`<svg viewBox="0 0 120 50" aria-hidden="true"><rect x="34" y="6" width="52" height="38" rx="4" fill="currentColor" opacity=".9"/><text x="60" y="32" text-anchor="middle" font-family="Barlow Condensed" font-size="22" fill="var(--surface)">?</text><path d="M4 18h30M4 32h30M86 25h30" stroke="currentColor" stroke-width="2.5"/></svg>`,
  mount(host){
   const names=["AND","OR","NAND","NOR","XOR","XNOR"];
   host.innerHTML=`<div class="game"><div class="gameBar"><span class="mono" id="gg-r">Box 1 / 6</span><span class="mono" id="gg-s">Score 0</span><span class="mono" id="gg-p">Probes 0</span></div>

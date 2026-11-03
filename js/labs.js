@@ -620,12 +620,33 @@ L.adder={title:"4-bit ripple-carry adder",sub:"XOR and AND doing arithmetic",htm
   root.addEventListener("click",e=>{const b=e.target.closest("button"); if(!b) return; st[b.dataset.r]^=(1<<+b.dataset.b); BC.beep("click"); BC.touchLab("adder"); draw();});
   draw();}};
 
+/* ---------- home figure: a battery and one resistor ---------- */
+BC.mountHero=function(host){
+  host.innerHTML=`<div class="figBody"><canvas id="hr-cv" aria-label="A 9 volt battery driving a resistor. Moving dots show current."></canvas>
+   <div class="figSide"><div class="ctrl"><label for="hr-r"><span>Resistance</span><output id="hr-r-o"></output></label><input type="range" id="hr-r" min="1.3" max="4.3" step="0.01" value="2.672"></div>
+   <div class="readout"><div class="ro hl"><div class="k">Current</div><div class="v" id="hr-i">—</div></div><div class="ro"><div class="k">Power in resistor</div><div class="v" id="hr-p">—</div></div></div></div></div>`;
+  const st={V:9,R:470,I:0,heat:0}; let s=0; const sm=[];
+  const run=()=>{st.R=Math.pow(10,+$("#hr-r").value); st.I=st.V/st.R; const P=st.V*st.I; st.heat=P/0.25; out("hr-r",fmt(st.R,"Ω")); setT("hr-i",fmt(st.I,"A")); setT("hr-p",fmt(P,"W")+(P>0.25?" · too hot":""));};
+  host.addEventListener("input",run); run(); host._run=run;
+  BC.anim(dt=>{const cv=$("#hr-cv"); if(!cv) return; const {g,W,H}=BC.fit(cv);
+   const r={x0:50,x1:W-40,y0:42,y1:H-34}, ym=(r.y0+r.y1)/2, xa=W/2-60, xb=W/2+60;
+   const speed=clamp((Math.log10(st.I*1e6)+0.5)/6,0.03,1.4)*0.22; s+=speed*dt;
+   g.strokeStyle=css("--muted"); g.lineWidth=1.5; line(g,[[r.x0,ym-12],[r.x0,r.y0],[xa,r.y0]]); line(g,[[xb,r.y0],[r.x1,r.y0],[r.x1,r.y1],[r.x0,r.y1],[r.x0,ym+12]]);
+   g.strokeStyle=css("--ink"); battV(g,r.x0,ym,"9 V");
+   const h=Math.min(st.heat,1.2); g.save(); g.lineWidth=2.5; g.strokeStyle=st.heat<0.15?css("--ink"):`hsl(${38-38*Math.min(h,1)} 95% 50%)`; zigH(g,xa,xb,r.y0,8); g.restore();
+   txt(g,fmt(st.R,"Ω"),W/2,r.y0-14,"center","--ink",12);
+   if(st.heat>1 && Math.random()<dt*12) smoke(sm,W/2+BC.rand(-40,40),r.y0-6); drawSmoke(g,sm,dt);
+   g.fillStyle=css("--accent"); const N=Math.max(12,Math.round((W+H)/28));
+   for(let i=0;i<N;i++){const [x,y]=loopPt(r,s+i/N); if(x===r.x0&&Math.abs(y-ym)<14) continue; g.beginPath(); g.arc(x,y,2.8,0,7); g.fill();}
+  });
+};
+
 /* ---------- mounting ---------- */
-BC.mountLab=function(key,host){
-  const Lb=L[key]; if(!Lb) return; const d=document.createElement("div"); d.className="lab"; d.id="lab-"+key;
-  d.innerHTML=`<div class="lh"><h3>${Lb.title}</h3><span class="label">${Lb.sub}</span></div><div class="lb">${Lb.html()}</div>`;
+BC.mountLab=function(key,host,fig){
+  const Lb=L[key]; if(!Lb) return; const d=document.createElement("figure"); d.className="lab"; d.id="lab-"+key;
+  d.innerHTML=`<div class="lb">${Lb.html()}</div><figcaption class="lh"><h3>${fig?`<span class="figno">Fig. ${fig}</span>`:""}${Lb.title}</h3><span>${Lb.sub}</span></figcaption>`;
   host.appendChild(d);
   if(Lb.init) Lb.init(d);
-  if(Lb.run){ const go=()=>{ Lb.run(d); }; d.addEventListener("input",e=>{ go(); BC.touchLab(key); }); d.addEventListener("change",go); go(); d._run=go; }
+  if(Lb.run){ const go=()=>{ Lb.run(d); }; d.addEventListener("input",()=>{ go(); BC.touchLab(key); }); d.addEventListener("change",go); go(); d._run=go; }
 };
 })();

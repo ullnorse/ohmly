@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ohmly · An interactive platform for learning electronics</title>
 <meta name="description" content="A free, interactive platform for learning electronics: 17 modules, 27 animated labs, an oscilloscope simulator, arcade games and quizzes. Runs in your browser, no sign-up.">
-<meta name="theme-color" content="#1D6B49" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0D1612" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#FAFAF7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Ohmly · An interactive platform for learning electronics">
 <meta property="og:description" content="17 modules, 27 animated labs, an oscilloscope simulator and arcade games. Free, in your browser.">
 <meta property="og:image" content="https://ullnorse.github.io/ohmly/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='1' y='1' width='26' height='26' rx='6' fill='%231D6B49'/%3E%3Cpath d='M5 14h4l2-5 3 10 3-10 2 5h4' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="preload" href="fonts/IBMPlexSans-latin-bSB4Zh.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='1' y='1' width='26' height='26' rx='6' fill='%23141414'/%3E%3Cpath d='M5 14h4l2-5 3 10 3-10 2 5h4' fill='none' stroke='%23FF5A44' stroke-width='2.4' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/IBMPlexSans-normal-400-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/app.css">
 </head>
@@ -22,13 +22,13 @@
 <a class="skip" href="#view">Skip to content</a>
 <header class="top">
   <a class="brand" href="#home" aria-label="Ohmly home">
-    <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="6" fill="var(--trace)"/><path d="M5 14h4l2-5 3 10 3-10 2 5h4" fill="none" stroke="var(--surface)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>
+    <svg width="30" height="16" viewBox="0 0 30 16" aria-hidden="true"><path d="M0 8h6l2-6 4 12 4-12 4 12 2-6h8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="miter"/></svg>
     Ohmly
   </a>
-  <button class="btn railToggle" id="railToggle" type="button" aria-expanded="false" aria-controls="rail">Modules</button>
-  <nav class="topnav" aria-label="Sections"><a href="#home">Course map</a><a href="#arcade">Arcade</a><a href="#formulas">Formulas</a><a href="#about">About</a></nav>
+  <button class="btn railToggle" id="railToggle" type="button" aria-expanded="false" aria-controls="rail">Contents</button>
+  <nav class="topnav" aria-label="Sections"><a href="#home">Contents</a><a href="#arcade">Arcade</a><a href="#formulas">Formulas</a><a href="#about">About</a></nav>
   <span class="spacer"></span>
-  <div class="lv" aria-label="Your level"><span class="chipLv" id="lvNum">Lv 1</span><b id="lvName">Spark</b><span class="bar" aria-hidden="true"><i id="xpBar"></i></span><span class="xpt" id="xpText"></span></div>
+  <a class="lv" id="lvLink" href="#log">Lv 1 · 0 XP</a>
   <button class="iconBtn" id="themeBtn" type="button" aria-label="Change theme"></button>
   <button class="iconBtn" id="soundBtn" type="button" aria-pressed="true" aria-label="Sound effects"></button>
 </header>

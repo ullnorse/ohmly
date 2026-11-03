@@ -4,7 +4,7 @@ An interactive platform for learning electronics. Free, and it runs entirely in 
 
 Live at **https://ullnorse.github.io/ohmly/**
 
-- 17 modules, from Ohm's law to op amps, microcontrollers and motors
+- 17 modules in three parts (foundations, building, going deeper), from Ohm's law to op amps, microcontrollers and motors
 - 27 hands-on labs: animated circuits, an oscilloscope simulator, a filter you can hear, a 555 timer that blinks and plays tones, motors, logic and more
 - 7 arcade games: Color Code Rush, Divider Designer, Gate Detective, Meter Madness, Formula Flashcards, Pop Quiz Roulette, Scope Sleuth
 - 91 quiz questions with explanations, plus XP, levels and badges
@@ -45,13 +45,13 @@ js/data.js        course content: modules, ideas, formulas, quizzes
 js/core.js        state, XP, badges, sound, confetti, plotting
 js/labs.js        the 27 interactive labs
 js/games.js       the arcade games
-js/app.js         views, routing, settings, backup/import
+js/app.js         views (contents, modules, arcade, logbook, about), routing, settings, backup/import
 og.png            social preview image (1200×630)
 ```
 
 ## Editing content
 
-All course text lives in `js/data.js`. Each module has `title`, `blurb`, `big` (intro), `ideas`, `formulas`, `tip`, `labs` (lab ids from `labs.js`), `quiz` (`q`, options `o`, index of the right answer `a`, explanation `w`) and an optional `reading` note.
+All course text lives in `js/data.js`. Each module has `n`, `part` (A, B or C), `title`, `blurb`, `big` (intro), `ideas`, `formulas`, `tip`, `labs` (lab ids from `labs.js`), `quiz` (`q`, options `o`, index of the right answer `a`, explanation `w`) and an optional `reading` note.
 
 Progress is stored in `localStorage` under the key `ohmly-v1`. If you change the structure of the state, bump the key or add a migration.
 
@@ -63,6 +63,6 @@ Progress is stored in `localStorage` under the key `ohmly-v1`. If you change the
 
 ## Credits
 
-Fonts: Bricolage Grotesque, IBM Plex Sans and IBM Plex Mono, licensed under the SIL Open Font License 1.1 (see `fonts/OFL-*.txt`).
+Fonts: Barlow Condensed, IBM Plex Sans and IBM Plex Mono, licensed under the SIL Open Font License 1.1 (see `fonts/OFL-*.txt`).
 
 Labs use simplified models (ideal sources, typical part values, first-order behavior) for intuition. They are not a substitute for datasheets. Nothing here is guidance for working on mains-powered equipment.
