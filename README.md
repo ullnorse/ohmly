@@ -95,9 +95,11 @@ Parts with memory are companion models. `capacitor` holds `v0`, draws as a glass
 
 `ic555` is the 555 as a block: a stiff output tower from `a` (a floor node) to `b` (the OUT pin), `V`, `hi` (output high), `pins: {vcc, gnd, thr, dis?}` (node ids). The widget flips `hi` at 2/3 and 1/3 of the supply and closes a `nosch` switch for DIS. The Schematic draws a labelled box with the pins wired to their nodes. A `trace` with `flatOff: 1` fades out in the Schematic.
 
-`ldo` is an ideal linear regulator: `Vreg`, `Vdo`, `Rdo` and `Iset` (the load's flow); it passes `Iset` from input to output until headroom falls under `Vdo`, and its glow is (Vin - Vout) x I. The AC source is a `source` whose `V` the widget sets each step; `trace.pts2` adds a dashed second line.
+`ldo` is an ideal linear regulator: `Vreg`, `Vdo`, `Rdo` and `Iset` (the load's flow); it passes `Iset` from input to output until headroom falls under `Vdo`, and its glow is (Vin - Vout) x I. The AC source is a `source` (`ac: 1` draws the sine symbol) whose `V` the widget sets each step; `trace.pts2` adds a dashed second line.
 
 A description with `live: true` runs on its own clock: heights follow the model without the spring, and `vmax` may change, in which case the scale eases and the back walls relabel. `clock: {t, scale}` prints the time and how much it is slowed; `trace: {label, pts, tMax, yMax, yMin?, guides, ticks, side}` plots a run (`yMin` for a signal that goes negative). The `capacitor` symbol turns to suit a horizontal run, so one can sit in a line as well as across it. A widget with time adds `running(s)` and `quantum(s)`; under reduced motion the engine calls `tick` with one quantum every 650 ms.
+
+A `resistor` may carry `pw`, its heat in watts, to glow by a cycle average instead of the instant. A live description may carry `h`, the step its solve reads memory parts with, so a tank or flywheel straight across a source shows its flow.
 
 Under reduced motion nothing loops: the picture settles at once, with static grains and arrowheads standing in for flow.
 

@@ -169,6 +169,8 @@ function symFuse(c){
 }
 function symSource(c){
   const {g,p}=c, a=p[0], b=p[p.length-1], x=(a[0]+b[0])/2, y=(a[1]+b[1])/2, P=PAL, r=c.e.V<0?-1:1;
+  if(c.e.ac){ const R=17; g.strokeStyle=P.inkS; g.lineWidth=2.5; g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(x,y+R); g.moveTo(x,y-R); g.lineTo(b[0],b[1]); g.stroke(); g.fillStyle=P.bgS; g.beginPath(); g.arc(x,y,R,0,7); g.fill(); g.stroke();
+    g.beginPath(); for(let i=0;i<=20;i++){ const t=i/20*2*Math.PI; i?g.lineTo(x-10+t*20/(2*Math.PI),y-Math.sin(t)*6):g.moveTo(x-10,y); } g.stroke(); return; }
   g.strokeStyle=P.inkS; g.lineWidth=2.5; g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(x,y+6); g.moveTo(x,y-6); g.lineTo(b[0],b[1]); g.stroke();
   g.fillStyle=P.bgS; g.fillRect(x-20,y-5,40,10); g.lineWidth=3; g.beginPath(); g.moveTo(x-16,y-6*r); g.lineTo(x+16,y-6*r); g.stroke(); g.lineWidth=5; g.beginPath(); g.moveTo(x-8,y+6*r); g.lineTo(x+8,y+6*r); g.stroke();
 }
@@ -207,7 +209,7 @@ function Terrain(stage){
     return T.sol; };
   const swing0=e=>{ const P=TYPES[e.t]; return P.gate?1-P.gate(e,T.sol.I[e.id]||0):e.closed?0:1; };
   const settle=()=>{ const D=T.desc; T.vm=D.vmax||18; for(const k in T.sol.v){ T.zs[k]=T.sol.v[k]; T.zv[k]=0; } for(const e of D.edges){ T.heat[e.id]=heatTarget(e); T.flow[e.id]=Math.abs(T.sol.I[e.id]||0); T.pres[e.id]=e.ghost?0:1; T.swing[e.id]=swing0(e); } };
-  const heatTarget=e=>{ if(e.open||e.ghost||e.dead) return 0; const I=T.sol.I[e.id]; if(e.t==="resistor") return I*I*e.R/(e.rating||T.desc.pref||2); if(TYPES[e.t].hot){ const v=T.sol.v; return Math.abs(I*(v[e.a]-v[e.b]))/(e.rating||T.desc.pref||2); } return 0; };
+  const heatTarget=e=>{ if(e.open||e.ghost||e.dead) return 0; const I=T.sol.I[e.id]; if(e.t==="resistor") return (e.pw!==undefined?e.pw:I*I*e.R)/(e.rating||T.desc.pref||2); if(TYPES[e.t].hot){ const v=T.sol.v; return Math.abs(I*(v[e.a]-v[e.b]))/(e.rating||T.desc.pref||2); } return 0; };
   /* everything comes up out of the floor when the picture first appears */
   T.rise=()=>{ if(!BC.reduced) T.pres={}; };
   T.setView=v=>{ viewPref=v; T.target=v==="height"?0:1; if(BC.reduced) T.m=T.target; };
@@ -1199,6 +1201,92 @@ const osw={
   alt:s=>s.layout==="fill"?`tank level ${volts(+s.vc.toFixed(2))} of ${OS.V} volts, filling through ${fmt(s.R,"Ω")}, marks at 3 and 6 volts.`:`555 flipping a ${fmt(s.C,"F")} tank between 3 and 6 volts, ${s.layout==="std"?"R1 "+fmt(s.RA,"Ω")+", R2 "+fmt(s.RB,"Ω"):"through "+fmt(s.R,"Ω")}, output ${s.hi?"high":"low"}, tank ${volts(+s.vc.toFixed(2))}.`
 };
 
+/* ---------- module 14: AC, reactance and decibels ----------
+   Stated model. A 50 Hz source, shown 50× slower; backward Euler with 200 steps per cycle, and every cycle is a whole number of steps. RMS: 8 V peak into 100 Ω beside a battery into another 100 Ω; the AC's heat is the mean of V²/R over one whole cycle. Reactance: a ±3 V source across a 100 µF tank or a 100 mH flywheel (equal at 50 Hz, 31.8 Ω and 31.4 Ω). The tank hangs between a 5 V base and the source, so its level (5 V minus the source) never drops under the floor; the flywheel goes straight across, with no base. Peak flow is the largest flow over one whole cycle, read from a silent run each time the frequency changes. Decibels: a matched ladder of 100 Ω series and 824 Ω shunt resistors, ending in a 341 Ω load, so each pad keeps 1/√2 of the height (half the power) and earlier taps never move. */
+const AC={f:50,slow:50,spc:200,pk:8,R:100,pkx:3,C:1e-4,L:.1,Vb:5,Vin:8,Rs:100,Rd:1000};
+const acPk=s=>s.mode==="rms"?AC.pk:AC.pkx, acV=s=>acPk(s)*Math.sin(s.ph);
+const acHs=s=>1/(s.f*AC.spc), acW=s=>2*Math.PI/AC.spc;
+const padK=1/Math.SQRT2, padZ=AC.Rs/(1-padK), padRp=padZ*(padZ-AC.Rs)/AC.Rs;
+const dB=(v,v0)=>{ const x=20*Math.log10(v/v0); return (Math.abs(x)<.05?"0":(x<0?"−":"+")+Math.abs(x).toFixed(1))+" dB"; };
+const acOut=s=>"a"+Math.max(1,s.div?1:s.sec);
+function acCircuit(s,run){
+  const nodes={g:{at:[0,.8]},e:{at:[0,.8],flat:[0,.3]},n0:{at:[0,0]}}, edges=[], w=(id,a,b)=>edges.push({id,t:"wire",a,b});
+  const src={id:"src",t:"source",a:"g",b:"e",ac:s.mode!=="att"?1:0,V:s.mode==="att"?AC.Vin:acV(s),box:.15,tagOff:[0,-12],tagf:[-30,44]};
+  if(s.mode==="att"){
+    const u=[0,.45,.85,1.25,1.65], n=Math.max(1,s.div?1:s.sec), Rs=s.div?AC.Rd:AC.Rs; src.tag=AC.Vin+" V"; edges.push(src); w("w0","e","n0");
+    for(let i=1;i<=n;i++){
+      nodes["a"+i]={at:[u[i],0]}; nodes["b"+i]={at:[u[i],.8]};
+      const rs={id:"S"+i,t:"resistor",a:i>1?"a"+(i-1):"n0",b:"a"+i,R:Rs,rating:1};
+      if(s.div) rs.label=fmt(Rs,"Ω"),rs.lab=[0,.25],rs.labf=[0,-26];
+      if(s.sec>=1||s.div) edges.push(rs); else w("S"+i,"n0","a"+i);
+      const Rp=s.div?s.Rp:i<s.sec?padRp:padZ-AC.Rs, sh={id:"P"+i,t:"resistor",a:"a"+i,b:"b"+i,R:s.sec===0&&!s.div?padZ:Rp,rating:1};
+      if(s.div) sh.label=fmt(s.Rp,"Ω"),sh.lab=[.14,.4],sh.labf=[40,0];
+      edges.push(sh); w("G"+i,"b"+i,i>1?"b"+(i-1):"g");
+    }
+    return {gnd:"g",vmax:10,vmin:-10,iref:.03,pref:1,rspan:[50,2000],live:true,nodes,edges};
+  }
+  const lab={lab:[0,.2],labf:[0,28]}, hs=acHs(s);
+  if(s.mode==="rms"){
+    Object.assign(nodes,{ra:{at:[.12,0],flat:[.2,0]},rb:{at:[.6,0],flat:[.7,0]},o1:{at:[.75,0]},f1:{at:[.75,.8]},g2:{at:[.95,.8]},b2:{at:[.95,.8],flat:[.95,.3]},n2:{at:[.95,0]},ra2:{at:[1.07,0]},rb2:{at:[1.55,0]},o2:{at:[1.7,0]},f2:{at:[1.7,.8]}});
+    src.tag=AC.pk+" V peak"; edges.push(src); w("w0","e","n0"); w("w1","n0","ra");
+    const hot=s.meter&&s.pac!==null, R1={id:"R1",t:"resistor",a:"ra",b:"rb",R:AC.R,rating:1,label:fmt(AC.R,"Ω"),...lab}; if(hot) R1.pw=s.pac; edges.push(R1);
+    w("w2","rb","o1"); w("w3","o1","f1"); w("w4","f1","g"); w("w5","g2","f1");
+    edges.push({id:"bat",t:"source",a:"g2",b:"b2",V:s.vdc,box:.15,tag:s.vdc.toFixed(1)+" V",tagOff:[0,-12],tagf:[30,44]}); w("w6","b2","n2"); w("w7","n2","ra2");
+    edges.push({id:"R2",t:"resistor",a:"ra2",b:"rb2",R:AC.R,rating:1,label:fmt(AC.R,"Ω"),...lab}); w("w8","rb2","o2"); w("w9","o2","f2"); w("w10","f2","g2");
+    return {gnd:"g",vmax:10,vmin:-10,iref:.1,pref:1,rspan:[22,500],live:true,nodes,edges,clock:acClock(s)};
+  }
+  const tank=s.mode==="tank", st=run?{v:s.vc,i:s.iL}:{v:s.vc0,i:s.iL0};
+  Object.assign(nodes,{ra:{at:[tank?.45:.15,0],flat:[.3,0]},rb:{at:[tank?.45:.75,0],flat:[.6,0]},ob:{at:[.9,0]},o:{at:[.9,.8],flat:[.9,.3]},g2:{at:[.9,.8]}});
+  src.tag=AC.pkx+" V peak"; edges.push(src); w("w0","e","n0"); w("w1","n0","ra");
+  edges.push(tank?{id:"P",t:"capacitor",a:"rb",b:"ra",C:AC.C,v0:st.v,box:tankBox(AC.C),rim:AC.Vb+AC.pkx+1,capLabel:fmt(AC.C,"F")}:{id:"P",t:"inductor",a:"ra",b:"rb",L:AC.L,i0:st.i,label:fmt(AC.L,"H"),...lab});
+  w("w2","rb","ob"); w("w3","ob","o"); w("w4","g2","g");
+  if(tank) edges.push({id:"B",t:"source",a:"g2",b:"o",V:AC.Vb,box:.15,tag:AC.Vb+" V",tagOff:[0,-12],tagf:[30,44]}); else w("B","g2","o");
+  const T=2/s.f;
+  return {gnd:"g",vmax:10,vmin:-10,iref:.2,pref:1,live:true,h:run?0:hs,nodes,edges,clock:acClock(s),trace:s.trace?{label:"Dashed: height",pts:s.tr,pts2:s.tr2,tMax:T,yMin:-1.15,yMax:1.15}:null};
+}
+const acClock=s=>({t:"t = "+secs(s.t),scale:`shown ${AC.slow}× slower`+(BC.reduced?", in steps":"")});
+/* advance by run seconds, in whole steps; a window is exactly one cycle of steps */
+function acRun(s,run){
+  const d=acCircuit(s,true), src=d.edges.find(e=>e.id==="src"), P=d.edges.find(e=>e.id==="P"), R1=d.edges.find(e=>e.id==="R1"), hs=acHs(s), w=acW(s); let o=null; s.acc+=run;
+  while(s.acc>=hs-1e-12){
+    s.acc-=hs; s.t+=hs; s.ph+=w; src.V=acV(s); if(P){ s.vc0=P.v0; s.iL0=P.i0; } o=timeStep(d,hs,hs,1);
+    if(P) s.wPk=Math.max(s.wPk,Math.abs(o.I.P)); if(R1) s.wE+=o.I.R1*o.I.R1*AC.R;
+    if(++s.n>=AC.spc){ s.ipk=P?s.wPk:null; s.pac=R1?s.wE/AC.spc:null; s.n=0; s.wPk=0; s.wE=0; }
+  }
+  if(P){ s.vc=P.v0; s.iL=P.i0; } s.sol=o; return o;
+}
+/* a fresh run at this frequency: the state of a settled cycle, then one silent cycle to read it */
+function acInit(s){
+  const w=acW(s), x=w/2, pk=AC.pkx, A=pk/(2*Math.PI*s.f*AC.L)*(x/Math.sin(x));
+  s.vc=AC.Vb-pk*Math.sin(s.ph); s.vc0=AC.Vb-pk*Math.sin(s.ph-w); s.iL=-A*Math.cos(s.ph+x); s.iL0=-A*Math.cos(s.ph-x);
+  s.acc=0; s.n=0; s.wPk=0; s.wE=0; s.tr=[]; s.tr2=[]; s.tw=s.t;
+  const q={...s}; acRun(q,(AC.spc+.5)*acHs(s)); s.ipk=q.ipk; s.pac=q.pac;
+}
+const ac={
+  circuit:s=>{ if(s.mode!=="att"&&s.k!==s.mode+","+s.f){ s.k=s.mode+","+s.f; acInit(s); } return acCircuit(s,false); },
+  fresh:()=>({mode:"rms",f:AC.f,vdc:8,meter:false,trace:false,sec:0,div:false,Rp:1000,t:0,ph:0,acc:0,n:0,wPk:0,wE:0,ipk:null,pac:null,was:null,vc:0,vc0:0,iL:0,iL0:0,k:"",tr:[],tr2:[],tw:0,chg:0,sol:null}),
+  running:s=>s.mode!=="att",
+  quantum:s=>.25/s.f*AC.slow,
+  tick(s,sol,dt){
+    if(!dt||s.mode==="att") return null;
+    acRun(s,dt/AC.slow);
+    if(s.trace){ const w=2/s.f, n=s.tr.length, o=s.sol; if(s.t-s.tw>w){ s.tr=[]; s.tr2=[]; s.tw=s.t; }
+      else if(o&&(!n||s.t-s.tw-s.tr[n-1][0]>=w/200)){ const X=s.mode==="coil"?2*Math.PI*s.f*AC.L:1/(2*Math.PI*s.f*AC.C), sg=s.mode==="tank"?-1:1; s.tr.push([s.t-s.tw,sg*o.I.P*X/AC.pkx]); s.tr2.push([s.t-s.tw,acV(s)/AC.pkx]); } }
+    return null;
+  },
+  busy:()=>false,
+  ro:{
+   bat:["Battery",s=>volts(+s.vdc.toFixed(1))], pac:["AC heat",s=>s.meter&&s.pac!==null?watts(s.pac):"—"], pbat:["Battery heat",s=>s.meter?watts(s.vdc*s.vdc/AC.R):"—"],
+   freq:["Frequency",s=>fmt(Math.round(s.f),"Hz")], flow:["Peak flow",s=>s.ipk===null?"—":fmt(+s.ipk.toPrecision(3),"A")], was:["Before",s=>s.was===null?"—":fmt(+s.was.toPrecision(3),"A")],
+   pads:["Pads",s=>String(s.sec)], out:["Height",(s,o)=>volts(+o.v[acOut(s)].toFixed(2))], drop:["Drop, dB",(s,o)=>dB(o.v[acOut(s)],AC.Vin).replace(" dB","")], src:["Source",(s,o)=>volts(+o.v.e.toFixed(1))]
+  },
+  val:{heat:s=>s.pac===null?-1:s.vdc*s.vdc/AC.R/s.pac, ratio:(s,o)=>o.v.a1/AC.Vin},
+  fail:{},
+  alt:(s,o)=>s.mode==="att"?`${AC.Vin} volt source into ${s.div?"a divider":s.sec+" pads"}, output ${volts(+o.v[acOut(s)].toFixed(2))}, ${dB(o.v[acOut(s)],AC.Vin)}.`
+    :s.mode==="rms"?`${AC.pk} volt peak AC into ${AC.R} ohms beside a ${s.vdc.toFixed(1)} volt battery into ${AC.R} ohms${s.meter&&s.pac!==null?", AC heat "+watts(s.pac)+", battery heat "+watts(s.vdc*s.vdc/AC.R):""}.`
+    :`${AC.pkx} volt peak source at ${Math.round(s.f)} hertz across a ${s.mode==="tank"?fmt(AC.C,"F")+" tank":fmt(AC.L,"H")+" flywheel"}, peak flow ${s.ipk===null?"unknown":fmt(+s.ipk.toPrecision(3),"A")}.`
+};
+
 BC.LESSONS={
  1:{
   xp:40, widget:loop, hotspot:{a:"sa",b:"sb"},
@@ -1618,6 +1706,60 @@ BC.LESSONS={
     {f:2,step:6,need:["RB","C","tL"],show:v=>`0.693 × ${fmt(v.RB,"Ω")} × ${fmt(v.C,"F")} = ${secs(.693*v.RB*v.C)}, you measured ${secs(v.tL)}`},
     {f:0,step:6,need:["RA","RB","C","f"],show:v=>`1.44 / ((${fmt(v.RA,"Ω")} + 2 × ${fmt(v.RB,"Ω")}) × ${fmt(v.C,"F")}) = ${hz(1.44/((v.RA+2*v.RB)*v.C))}, you measured ${hz(v.f)}`},
     {f:3,step:6,need:["RA","RB","duty"],show:v=>`(${fmt(v.RA,"Ω")} + ${fmt(v.RB,"Ω")}) / (${fmt(v.RA,"Ω")} + 2 × ${fmt(v.RB,"Ω")}) = ${Math.round((v.RA+v.RB)/(v.RA+2*v.RB)*100)}%, you set ${Math.round(v.duty*100)}%`}
+   ]
+  }
+ },
+ 14:{
+  xp:40, widget:ac,
+  steps:[
+   {id:"hot",kind:"predict",prompt:"Both tops reach 8 V. Over time, the AC's resistor heats...?",
+    insight:"The AC spends most of each swing below its top, so it heats less than a steady 8 V.",
+    setup:s=>{s.vdc=8;}, ro:["bat","pac","pbat"], cols:3,
+    choices:[{t:"More"},{t:"The same"},{t:"Less",ok:1}],
+    reveal:s=>{s.meter=true;s.chg=s.t;}, settled:s=>s.t>=s.chg+2/s.f},
+   {id:"match",kind:"hit",prompt:"Slide the battery down until both resistors heat equally.",
+    insight:"They match near 71% of the peak. That battery height is the AC's effective height.",
+    setup:s=>{s.vdc=8;s.meter=true;}, ro:["bat","pac","pbat"],
+    sliders:[{k:"vdc",label:"Battery",min:0,max:8,step:.1,fmt:s=>s.vdc.toFixed(1)+" V",grip:{node:"b2"}}],
+    target:{of:"heat",to:1,tol:.04,show:()=>"equal heat"}, keep:(s,v)=>{v.rPk=AC.pk;v.rV=s.vdc;}},
+   {id:"tank",kind:"predict",prompt:"A tank takes the swing. Make it 5× faster. The stream gets...?",
+    insight:"A faster swing fills and empties the tank more often, so more flows for the same height.",
+    setup:s=>{s.mode="tank";s.f=20;}, ro:["freq","was","flow"], cols:3,
+    choices:[{t:"Thicker",ok:1},{t:"The same"},{t:"Thinner"}],
+    reveal:s=>{s.was=s.ipk;s.f=100;s.chg=s.t;}, settled:s=>s.t>=s.chg+2/s.f, keep:(s,v)=>{v.cF=s.f;v.cI=s.ipk;}},
+   {id:"coil",kind:"predict",prompt:"Now a flywheel, same swing. Make it 5× faster. The stream gets...?",
+    insight:"A flywheel resists change, so the faster you push, the less it passes.",
+    setup:s=>{s.mode="coil";s.f=20;}, ro:["freq","was","flow"], cols:3,
+    choices:[{t:"Thicker"},{t:"The same"},{t:"Thinner",ok:1}],
+    reveal:s=>{s.was=s.ipk;s.f=100;s.chg=s.t;}, settled:s=>s.t>=s.chg+2/s.f, keep:(s,v)=>{v.lF=s.f;v.lI=s.ipk;}},
+   {id:"lead",kind:"predict",prompt:"The tank's stream against the source's height. The stream peaks...?",
+    insight:"The stream is thickest while the height crosses zero, a quarter-swing before its peak: it leads.",
+    setup:s=>{s.mode="tank";s.f=50;}, ro:["freq","src","flow"], cols:1,
+    choices:[{t:"Before the height peaks",ok:1},{t:"At the same moment"},{t:"After the height peaks"}],
+    reveal:s=>{s.trace=true;s.chg=s.t;}, settled:s=>s.t>=s.chg+2/s.f},
+   {id:"lag",kind:"predict",prompt:"The flywheel next. Its stream peaks...?",
+    insight:"The flywheel builds flow slowly, so it peaks a quarter-swing after the height: it lags.",
+    setup:s=>{s.mode="coil";s.f=50;}, ro:["freq","src","flow"], cols:1,
+    choices:[{t:"Before the height peaks"},{t:"At the same moment"},{t:"After the height peaks",ok:1}],
+    reveal:s=>{s.trace=true;s.chg=s.t;}, settled:s=>s.t>=s.chg+2/s.f},
+   {id:"pads",kind:"do",prompt:"Add four pads, one click each. Watch every new height.",
+    insight:"Each pad keeps the same share, so drops add: half the power is 3 dB, half the height 6 dB.",
+    setup:s=>{s.mode="att";}, ro:["pads","out","drop"],
+    actions:[{label:s=>s.sec>=4?"Four pads in":"Add a pad",when:()=>true,run:s=>{ if(s.sec<4) s.sec++; }}],
+    goal:s=>s.sec>=4, keep:(s,v)=>{v.pIn=AC.Vin;v.pOut=AC.Vin*Math.pow(padK,4);}},
+   {id:"tenth",kind:"hit",prompt:"Slide the shunt until the output is a tenth of the source.",
+    insight:"A tenth of the height is 20 dB down. A hundredth would be 40.",
+    setup:s=>{s.mode="att";s.div=true;s.sec=1;s.Rp=1000;}, ro:["src","out","drop"],
+    sliders:[{k:"Rp",label:"Shunt",log:[30,3000],fmt:s=>fmt(s.Rp,"Ω"),grip:{edge:"P1"}}],
+    target:{of:"ratio",to:.1,tol:.04,show:()=>"−20 dB"}, keep:(s,v)=>{v.dIn=AC.Vin;v.dOut=AC.Vin*s.Rp/(AC.Rd+s.Rp);}}
+  ],
+  end:{
+   prompt:"These are the equations. Every number is yours.",
+   rows:[
+    {eq:"Vrms = Vpk / √2",what:"The battery height that heats like the AC",step:2,need:["rPk","rV"],show:v=>`${volts(v.rPk)} / √2 = ${volts(+(v.rPk/Math.SQRT2).toFixed(2))}, you matched ${volts(+v.rV.toFixed(1))}`},
+    {eq:"Xc = 1 / (2πfC)",what:"The tank's resistance to flow",step:3,need:["cF","cI"],show:v=>`1 / (2π × ${fmt(v.cF,"Hz")} × ${fmt(AC.C,"F")}) = ${fmt(+(1/(2*Math.PI*v.cF*AC.C)).toPrecision(3),"Ω")}, you read ${volts(AC.pkx)} / ${fmt(+v.cI.toPrecision(3),"A")} = ${fmt(+(AC.pkx/v.cI).toPrecision(3),"Ω")}`},
+    {eq:"XL = 2πfL",what:"The flywheel's resistance to flow",step:4,need:["lF","lI"],show:v=>`2π × ${fmt(v.lF,"Hz")} × ${fmt(AC.L,"H")} = ${fmt(+(2*Math.PI*v.lF*AC.L).toPrecision(3),"Ω")}, you read ${volts(AC.pkx)} / ${fmt(+v.lI.toPrecision(3),"A")} = ${fmt(+(AC.pkx/v.lI).toPrecision(3),"Ω")}`},
+    {eq:"dB = 20 · log10(V2 / V1)",what:"A height ratio as decibels",step:8,need:["dIn","dOut","pIn","pOut"],show:v=>`${volts(+v.dOut.toFixed(2))} / ${volts(v.dIn)} gives ${dB(v.dOut,v.dIn)}; four pads, ${volts(+v.pOut.toFixed(2))} / ${volts(v.pIn)}, give ${dB(v.pOut,v.pIn)}`}
    ]
   }
  },
