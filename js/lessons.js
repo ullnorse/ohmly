@@ -127,9 +127,10 @@ function symMos(c){
 }
 function solidDiode(c){ c.run({hw:c.e.hw||HW*.62}); c.chevron(); }
 function symCap(c){
-  const {g,p}=c, a=p[0], b=p[p.length-1], x=(a[0]+b[0])/2, y=(a[1]+b[1])/2, P=PAL;
-  g.strokeStyle=P.inkS; g.lineWidth=2.5; g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(x,y-5); g.moveTo(x,y+5); g.lineTo(b[0],b[1]); g.moveTo(x-16,y-5); g.lineTo(x+16,y-5); g.moveTo(x-16,y+5); g.lineTo(x+16,y+5); g.stroke();
-  if(c.e.capLabel){ g.font=`600 13px ${c.font}`; g.textAlign="right"; g.fillStyle=P.mutedS; g.fillText(c.e.capLabel,x-24,y+4); }
+  const {g,p}=c, a=p[0], b=p[p.length-1], x=(a[0]+b[0])/2, y=(a[1]+b[1])/2, P=PAL, L=Math.hypot(b[0]-a[0],b[1]-a[1])||1, ux=(b[0]-a[0])/L, uy=(b[1]-a[1])/L, nx=-uy, ny=ux;
+  g.strokeStyle=P.inkS; g.lineWidth=2.5; g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(x-ux*5,y-uy*5); g.moveTo(x+ux*5,y+uy*5); g.lineTo(b[0],b[1]);
+  [-5,5].forEach(d=>{ g.moveTo(x+ux*d-nx*16,y+uy*d-ny*16); g.lineTo(x+ux*d+nx*16,y+uy*d+ny*16); }); g.stroke();
+  if(c.e.capLabel){ g.font=`600 13px ${c.font}`; g.textAlign=Math.abs(uy)>Math.abs(ux)?"right":"center"; g.fillStyle=P.mutedS; if(Math.abs(uy)>Math.abs(ux)) g.fillText(c.e.capLabel,x-24,y+4); else g.fillText(c.e.capLabel,x,y-24); }
 }
 function symCoil(c){
   const {g,p}=c, a=p[0], b=p[p.length-1], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L, n=4, r=Math.min(11,L/(2*n+2)), an=Math.atan2(dy,dx);
@@ -555,7 +556,7 @@ function Terrain(stage){
   function drawTrace(g,W,H){
     const tr=T.desc.trace; if(!tr) return; const P=PAL, w=clamp(W*.36,118,250), h=clamp(H*.24,62,130), left=tr.side==="left", x=(left?8:W-w-8)*(1-M)+(W*.58-w/2)*M, y=(left?48:8)*(1-M)+(H*.52-h/2)*M;   /* inside the loop in the schematic */
     g.fillStyle=rgb(P.bg,.86); g.strokeStyle=rgb(P.line); g.lineWidth=1; g.beginPath(); g.rect(x,y,w,h); g.fill(); g.stroke();
-    const X=t=>x+6+clamp(t/tr.tMax,0,1)*(w-12), Y=v=>y+h-6-clamp(v/tr.yMax,0,1)*(h-24);
+    const X=t=>x+6+clamp(t/tr.tMax,0,1)*(w-12), y0=tr.yMin||0, Y=v=>y+h-6-clamp((v-y0)/(tr.yMax-y0),0,1)*(h-24);
     (tr.guides||[]).forEach(gd=>{ g.strokeStyle=rgb(P.muted,.6); g.setLineDash([3,3]); g.beginPath(); g.moveTo(x+6,Y(gd.y)); g.lineTo(x+w-6,Y(gd.y)); g.stroke(); g.setLineDash([]); if(gd.t){ g.font=`500 ${labelPx(11)-1}px ${FONT.mono}`; g.textAlign="right"; g.fillStyle=P.mutedS; g.fillText(gd.t,x+w-6,Y(gd.y)-3); } });
     (tr.ticks||[]).forEach(t=>{ g.strokeStyle=rgb(P.muted,.6); g.beginPath(); g.moveTo(X(t),y+h-6); g.lineTo(X(t),y+h-11); g.stroke(); });
     g.font=`500 ${labelPx(11)-1}px ${FONT.mono}`; g.textAlign="left"; g.fillStyle=P.mutedS; g.fillText(tr.label,x+6,y+14);
@@ -976,6 +977,56 @@ const power={
   val:{pk:s=>s.pk,rip:s=>s.rip===null?-1:s.rip},
   fail:{},
   alt:(s,o)=>`source ${sgn(o.v.e)} of ${s.pk} volts peak${s.diode?", diode in line":""}${s.tank?", "+fmt(s.C,"F")+" tank":""}${s.reg?", 5 volt regulator":""}, load height ${volts(+o.v.lo.toFixed(2))}.`
+};
+
+/* ---------- module 16: an RC filter, in real model time ----------
+   Stated model. 1 kΩ and 1 µF, so the corner is 159 Hz. The source is 5 V plus or minus 4 V (a biased signal, so the tank stays above the floor), shown 100× slower. Backward Euler with 200 steps per cycle of the fastest tone. The swing kept is the last full cycle's peak-to-peak over the source's, read once the start-up has died away (a silent run of one cycle plus 6 RC runs first). Low-pass: R in line, tank to ground. High-pass: tank in line, output across R, and the output sits around 0 V so it dips under the glass. */
+const FL={slow:100,Vdc:5,pk:4,fb:640,pk1:3,pk2:1};
+const flKey=s=>[s.f,s.R,s.C,s.hp,s.mix,s.bare].join();
+function filterCircuit(s){
+  const hp=s.hp&&!s.bare, nodes={g:{at:[0,.8]},e:{at:[0,.8],flat:[0,.3]},n0:{at:[0,0]},ra:{at:[hp?.45:.15,0],flat:hp?[.3,0]:undefined},rb:{at:[hp?.45:.65,0],flat:hp?[.6,0]:undefined},o:{at:[.9,0],tag:"out"},f1:{at:[.9,.8]}};
+  if(!hp&&!s.bare){ nodes.tp={at:[.9,.38],flat:[.9,.24]}; nodes.tb={at:[.9,.38],flat:[.9,.56]}; }
+  const lab={h:{lab:[0,.27],labf:[0,-26]},v:{lab:[-.27,0],labf:[-34,0]}}, cap={t:"capacitor",C:s.C,v0:s.vc,box:tankBox(s.C),rim:10,capLabel:fmt(s.C,"F")};
+  const edges=[{id:"src",t:"source",a:"g",b:"e",V:flSrc(s),box:.15,tag:"5 V ± "+FL.pk+" V",tagOff:[0,-12],tagf:[-30,44]},
+    {id:"w0",t:"wire",a:"e",b:"n0"},{id:"w1",t:"wire",a:"n0",b:"ra"},{id:"w2",t:"wire",a:"rb",b:"o"},{id:"w5",t:"wire",a:"f1",b:"g"}];
+  if(s.bare) edges.push({id:"w3",t:"wire",a:"ra",b:"rb"});
+  else if(hp) edges.push({...cap,id:"C",a:"ra",b:"rb"},{id:"R",t:"resistor",a:"o",b:"f1",R:s.R,rating:.25,label:fmt(s.R,"Ω"),...lab.v});
+  else edges.push({id:"R",t:"resistor",a:"ra",b:"rb",R:s.R,rating:.25,label:fmt(s.R,"Ω"),...lab.h},{id:"w3",t:"wire",a:"o",b:"tp"},{...cap,id:"C",a:"tp",b:"tb"},{id:"w4",t:"wire",a:"tb",b:"f1"});
+  Object.values(nodes).forEach(n=>{ if(!n.flat) delete n.flat; });
+  const win=2/(s.mix?s.f:s.f);
+  return {gnd:"g",vmax:10,vmin:-5,iref:.004,pref:1,rspan:[200,5000],live:true,nodes,edges,clock:{t:"t = "+secs(s.t),scale:`shown ${FL.slow}× slower`+(BC.reduced?", in steps":"")},trace:{label:"Dashed: source",pts:s.tr,pts2:s.tr2,tMax:win,yMin:-5,yMax:10}};
+}
+const flSrc=s=>FL.Vdc+(s.mix?FL.pk1*Math.sin(s.ph)+FL.pk2*Math.sin(s.ph2):FL.pk*Math.sin(s.ph));
+/* advance by run seconds; the last cycle of output rides along for the swing */
+function filterRun(s,run){
+  const d=filterCircuit(s), src=d.edges.find(e=>e.id==="src"), cap=d.edges.find(e=>e.id==="C"), fm=s.mix?FL.fb:s.f, n=Math.max(1,Math.ceil(run*200*fm)), h=run/n, T=1/s.f; let o=null;
+  for(let i=0;i<n;i++){ s.t+=h; s.ph+=2*Math.PI*s.f*h; s.ph2+=2*Math.PI*FL.fb*h; src.V=flSrc(s); o=timeStep(d,h,h,1); s.buf.push([s.t,o.v.o]); }
+  let k=0; while(k<s.buf.length&&s.buf[k][0]<s.t-T) k++; if(k) s.buf.splice(0,k);
+  if(cap) s.vc=cap.v0; s.sol=o;
+  if(!s.mix&&s.t-s.t0>=T+6*s.R*s.C-1e-12){ let hi=-1e9,lo=1e9; s.buf.forEach(p=>{ hi=Math.max(hi,p[1]); lo=Math.min(lo,p[1]); }); s.ratio=(hi-lo)/(2*FL.pk); }
+  return o;
+}
+const flWarm=s=>s.mix?8*s.R*s.C:1/s.f+6*s.R*s.C;
+const flSettled=s=>s.wk===flKey(s)&&s.t-s.t0>=flWarm(s)+1/s.f;
+const pct=r=>r===null?"—":Math.round(r*100)+"%";
+const filt={
+  circuit:s=>{ if(s.wk!==flKey(s)){ s.wk=flKey(s); s.t0=s.t; s.buf=[]; s.ratio=null; filterRun(s,flWarm(s)); s.tr=[]; s.tr2=[]; s.tw=s.t; } return filterCircuit(s); },
+  fresh:()=>({f:40,R:1000,C:1e-6,hp:false,mix:false,bare:false,vc:FL.Vdc,ph:0,ph2:0,t:0,t0:0,wk:"",buf:[],ratio:null,was:null,tr:[],tr2:[],tw:0,sol:null}),
+  running:()=>true,
+  quantum:s=>.25/(s.mix?40:s.f)*FL.slow,
+  tick(s,sol,dt){
+    if(!dt) return null;
+    filterRun(s,dt/FL.slow);
+    const w=2/s.f; if(s.t-s.tw>w){ s.tr=[]; s.tr2=[]; s.tw=s.t; }
+    const n=s.tr.length, o=s.sol; if(o&&(!n||s.t-s.tw-s.tr[n-1][0]>=w/200)){ s.tr.push([s.t-s.tw,o.v.o]); s.tr2.push([s.t-s.tw,o.v.e]); }
+    return null;
+  },
+  busy:()=>false,
+  ro:{ freq:["Frequency",s=>s.mix?"mixed":fmt(Math.round(s.f),"Hz")], src:["Source",(s,o)=>volts(+o.v.e.toFixed(1))], out:["Output",(s,o)=>volts(+o.v.o.toFixed(1))],
+    swing:["Swing kept",s=>s.mix?"—":pct(s.ratio)], was:["Before",s=>pct(s.was)] },
+  val:{ratio:s=>s.ratio===null?-1:s.ratio},
+  fail:{},
+  alt:(s,o)=>`source 5 volts plus or minus ${s.mix?"two tones":FL.pk+" volts at "+Math.round(s.f)+" hertz"}, ${s.bare?"no filter, output is the source":s.hp?"tank in line, output across "+fmt(s.R,"Ω"):fmt(s.R,"Ω")+" into a "+fmt(s.C,"F")+" tank"}, output ${volts(+o.v.o.toFixed(1))}${s.ratio===null?"":", "+pct(s.ratio)+" of the swing kept"}.`
 };
 
 /* ---------- module 15: an op amp lifts or sinks its output until its two inputs are level ----------
@@ -1458,6 +1509,52 @@ BC.LESSONS={
     {eq:"Vout = Vin (1 + Rf / Rg)",what:"Non-inverting: tap level with the input",step:6,need:["nRf","nRg","nIn","nOut"],show:v=>`${volts(v.nIn)} × (1 + ${fmt(v.nRf,"Ω")} / ${fmt(v.nRg,"Ω")}) = ${av(v.nIn*(1+v.nRf/v.nRg))}, you read ${av(v.nOut)}`},
     {eq:"Vout = −Vin · Rf / Rin",what:"Inverting: − input held level with the floor",step:7,need:["iIn","iRin","iRf","iOut"],show:v=>`−${volts(v.iIn)} × ${fmt(v.iRf,"Ω")} / ${fmt(v.iRin,"Ω")} = ${av(-v.iIn*v.iRf/v.iRin)}, you read ${av(v.iOut)}`},
     {eq:"|Vout| ≤ rail",what:"At the rail the inputs stop being level",step:8,need:["cIn","cGap"],show:v=>`${volts(v.cIn)} in wants ${volts(v.cIn*3)}; the rail holds ${volts(OA.rail)}; gap ${av(v.cGap)}`}
+   ]
+  }
+ }
+ ,
+ 16:{
+  xp:40, widget:filt,
+  steps:[
+   {id:"fast",kind:"predict",prompt:"Slow swing: the tank keeps up. Make it 16× faster. The tank's swing...?",
+    insight:"The resistor can't refill the tank between swings, so the level barely moves.",
+    setup:s=>{s.f=40;}, ro:["freq","src","out","swing"], cols:2,
+    choices:[{t:"Stays the same"},{t:"Grows"},{t:"Shrinks a lot",ok:1},{t:"Stops"}],
+    reveal:s=>{s.f=640;}, settled:flSettled},
+   {id:"up",kind:"do",prompt:"Slide the frequency up until the tank keeps under a third of the swing.",
+    insight:"Each swing flips before the resistor can move much charge, so the level barely wobbles.",
+    setup:s=>{s.f=40;}, ro:["freq","out","swing"], sliders:[{k:"f",label:"Frequency",log:[40,640],fmt:s=>fmt(Math.round(s.f),"Hz")}],
+    goal:s=>s.ratio!==null&&s.ratio<.33},
+   {id:"corner",kind:"hit",prompt:"Find the frequency where the tank swings 71% as much as the source.",
+    insight:"That is the corner: slower gets through, faster is cut. Keep that frequency.",
+    setup:s=>{s.f=40;}, ro:["freq","swing"], sliders:[{k:"f",label:"Frequency",log:[40,640],fmt:s=>fmt(Math.round(s.f),"Hz")}],
+    target:{of:"ratio",to:.707,tol:.04,show:p=>Math.round(p*100)+"%"}, keep:(s,v)=>{v.f=s.f;v.R=s.R;v.C=s.C;v.r=s.ratio;}},
+   {id:"double",kind:"predict",prompt:"Double the tank. The corner frequency moves...?",
+    insight:"A bigger tank fills slower, so at the same speed less gets through: the corner moves down.",
+    setup:(s,v)=>{s.f=v.f||160;}, ro:["freq","was","swing"], cols:3,
+    choices:[{t:"Up"},{t:"Down",ok:1},{t:"Stays"}],
+    reveal:s=>{s.was=s.ratio;s.C*=2;}, settled:flSettled},
+   {id:"swap",kind:"predict",prompt:"Swap: tank in the line, output across the resistor. A slow swing...?",
+    insight:"The tank soaks up slow changes and passes quick ones: a high-pass with the same corner.",
+    setup:s=>{s.f=40;}, ro:["freq","out","swing"], cols:3,
+    choices:[{t:"Passes in full"},{t:"Mostly blocked",ok:1},{t:"Gets larger"}],
+    reveal:s=>{s.hp=true;}, settled:flSettled},
+   {id:"pass",kind:"do",prompt:"Slide up until the output keeps 90% of the swing.",
+    insight:"Fast swings cross the tank before it can fill, so they reach the output.",
+    setup:s=>{s.hp=true;s.f=40;}, ro:["freq","out","swing"], sliders:[{k:"f",label:"Frequency",log:[40,640],fmt:s=>fmt(Math.round(s.f),"Hz")}],
+    goal:s=>s.ratio!==null&&s.ratio>=.9, keep:(s,v)=>{v.hf=s.f;v.hr=s.ratio;}},
+   {id:"mix",kind:"predict",prompt:"A slow swing carries a fast buzz. Add the filter. The output keeps...?",
+    insight:"The buzz flips too fast for the tank to follow, so only the slow swing is left.",
+    setup:s=>{s.mix=true;s.bare=true;}, ro:["freq","src","out"], cols:3,
+    choices:[{t:"Both"},{t:"Only the slow swing",ok:1},{t:"Only the buzz"}],
+    reveal:s=>{s.bare=false;}, settled:flSettled}
+  ],
+  end:{
+   prompt:"These are the equations. Every number is yours.",
+   rows:[
+    {f:0,step:3,need:["f","R","C"],show:v=>`1 / (2π × ${fmt(v.R,"Ω")} × ${fmt(v.C,"F")}) = ${fmt(+(1/(2*Math.PI*v.R*v.C)).toPrecision(3),"Hz")}, you found ${fmt(Math.round(v.f),"Hz")}`},
+    {f:1,step:3,need:["f","R","C","r"],show:v=>{ const x=v.f*2*Math.PI*v.R*v.C; return `1 / √(1 + (${fmt(Math.round(v.f),"Hz")} / ${fmt(+(1/(2*Math.PI*v.R*v.C)).toPrecision(3),"Hz")})²) = ${(1/Math.sqrt(1+x*x)).toFixed(3)}, you read ${pct(v.r)}; at fc it is 0.707`; }},
+    {f:2,step:6,need:["hf","hr","R","C"],show:v=>{ const x=v.hf*2*Math.PI*v.R*v.C; return `${x.toFixed(2)} / √(1 + ${x.toFixed(2)}²) = ${(x/Math.sqrt(1+x*x)).toFixed(2)} at ${fmt(Math.round(v.hf),"Hz")}, you read ${pct(v.hr)}`; }}
    ]
   }
  }

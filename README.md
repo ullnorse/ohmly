@@ -95,7 +95,7 @@ Parts with memory are companion models. `capacitor` holds `v0`, draws as a glass
 
 `ldo` is an ideal linear regulator: `Vreg`, `Vdo`, `Rdo` and `Iset` (the load's flow); it passes `Iset` from input to output until headroom falls under `Vdo`, and its glow is (Vin - Vout) x I. The AC source is a `source` whose `V` the widget sets each step; `trace.pts2` adds a dashed second line.
 
-A description with `live: true` runs on its own clock: heights follow the model without the spring, and `vmax` may change, in which case the scale eases and the back walls relabel. `clock: {t, scale}` prints the time and how much it is slowed; `trace: {label, pts, tMax, yMax, guides, ticks, side}` plots a run. A widget with time adds `running(s)` and `quantum(s)`; under reduced motion the engine calls `tick` with one quantum every 650 ms.
+A description with `live: true` runs on its own clock: heights follow the model without the spring, and `vmax` may change, in which case the scale eases and the back walls relabel. `clock: {t, scale}` prints the time and how much it is slowed; `trace: {label, pts, tMax, yMax, yMin?, guides, ticks, side}` plots a run (`yMin` for a signal that goes negative). The `capacitor` symbol turns to suit a horizontal run, so one can sit in a line as well as across it. A widget with time adds `running(s)` and `quantum(s)`; under reduced motion the engine calls `tick` with one quantum every 650 ms.
 
 Under reduced motion nothing loops: the picture settles at once, with static grains and arrowheads standing in for flow.
 
