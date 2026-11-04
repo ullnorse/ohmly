@@ -604,10 +604,10 @@ body.lsWide .partName{font-size:.78rem}
 .lsP{grid-area:prompt;margin:0;padding:6px 12px;overflow:hidden;font-family:var(--f-display);font-weight:600;font-size:1.35rem;line-height:1.15;display:flex;align-items:center;outline:none}
 .lsStage{grid-area:stage;position:relative;overflow:hidden;border-block:1px solid var(--line);background:var(--bg);touch-action:manipulation;min-height:0}
 .lsCv{position:absolute;inset:0;width:100%;height:100%;display:block}
-.lsStage.grippy{touch-action:none}
+.lsGrip{position:absolute;left:0;top:0;width:88px;height:88px;margin:-44px 0 0 -44px;border-radius:50%;touch-action:none}
 .lsStage.gripNear{cursor:grab}
 .lsStage.grabbing{cursor:grabbing}
-.lsTog{position:absolute;left:0;top:0;display:flex}
+.lsTog{position:absolute;left:0;top:0;display:flex;z-index:2}
 .lsTog button{min-height:44px;padding:0 8px;border:0;background:none;cursor:pointer;font-family:var(--f-mono);font-size:.7rem;color:var(--muted);border-bottom:2px solid transparent}
 .lsTog button[aria-pressed=true]{color:var(--ink);border-bottom-color:var(--accent)}
 .lsPt,.lsHot{position:absolute;left:0;top:0;border:0;background:none;padding:0;cursor:pointer;margin:-22px 0 0 -22px;width:44px;height:44px;display:grid;place-items:center}

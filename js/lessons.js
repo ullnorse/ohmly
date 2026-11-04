@@ -4,7 +4,7 @@
    2. The engine: one step at a time (do, hit, predict, probe), fixed layout, saved progress, XP once.
    3. BC.LESSONS: lesson data keyed by module number. */
 (function(){
-const BC=window.BC, {$,$$,esc,S,css,clamp,fmt}=BC, {txt,smoke,drawSmoke}=BC.draw;
+const BC=window.BC, {$,$$,esc,S,css,clamp,fmt}=BC, {txt}=BC.draw;
 
 /* ---------- circuit description ----------
    {gnd:"g", vmax:18, iref:.06, pref?:W, rspan?:[lo,hi], nodes:{id:{at:[u,v], flat:[u,v]?, pad?, tag?, gauge?, was?}}, edges:[{id,t,a,b,...}], walk?:{path,t}}
@@ -113,9 +113,9 @@ function symSource(c){
 let viewPref="height";   /* survives step and page changes */
 function Terrain(stage){
   const cv=document.createElement("canvas"); cv.className="lsCv"; cv.setAttribute("role","img"); stage.appendChild(cv);
-  const shadowCv=document.createElement("canvas"), floorCv=document.createElement("canvas");
-  const T={cv,desc:null,sol:null,zs:{},zv:{},heat:{},flow:{},phi:{},pres:{},swing:{},m:viewPref==="height"?0:1,leads:[],smoke:[],sparks:[],rings:[],pts:[],hot:null,ring:null,flash:0,shake:0,clock:0,prev:{}};
-  let geo=null, floorKey="", order=null, orderKey="", layout=null, layoutKey="", dprNow=1;
+  const shadowCv=document.createElement("canvas"), floorCv=document.createElement("canvas"), wallCv=document.createElement("canvas");
+  const T={cv,desc:null,sol:null,zs:{},zv:{},heat:{},flow:{},phi:{},pres:{},swing:{},m:viewPref==="height"?0:1,leads:[],smoke:[],sparks:[],rings:[],pts:[],hot:null,ring:null,flash:0,shake:0,clock:0,prev:{},spin:{},gripEls:[],vm:null,plume:null};
+  let geo=null, floorKey="", wallKey="", order=null, orderKey="", layout=null, layoutKey="", dprNow=1;
   const smooth=x=>x*x*(3-2*x);
   /* the view: the floor gets a bit over half the frame, and heights get what is left above the back corner, one scale for the whole frame */
   function fit(W,H){
@@ -144,8 +144,8 @@ function Terrain(stage){
   T.target=T.m;
   T.moving=()=>T.m!==T.target||T.shake>0||T.flash>0;
   /* a part failing: flash, shock ring, sparks, smoke, a kick to the frame */
-  T.burst=id=>{ const e=T.desc.edges.find(x=>x.id===id); if(!e||BC.reduced) return; const a=T.nodeAt(e.a), b=T.nodeAt(e.b), x=(a[0]+b[0])/2, y=(a[1]+b[1])/2;
-    for(let i=0;i<26;i++) smoke(T.smoke,x+BC.rand(-34,34),y-4);
+  T.burst=(id,noSmoke)=>{ const e=T.desc.edges.find(x=>x.id===id); if(!e||BC.reduced) return; const a=T.nodeAt(e.a), b=T.nodeAt(e.b), x=(a[0]+b[0])/2, y=(a[1]+b[1])/2;
+    if(!noSmoke){ T.plume={x,y:y-4,age:0,spread:Math.min(46,Math.abs(a[0]-b[0])*.22),debt:22}; }
     for(let i=0;i<46;i++){ const an=BC.rand(-Math.PI*.95,-Math.PI*.05), sp=BC.rand(80,420); T.sparks.push({x:x+BC.rand(-14,14),y,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp,life:BC.rand(.35,.9)}); }
     T.rings.push({a:e.a,b:e.b,t:0,dur:.7,r:1}); T.flash=1; T.shake=1; T.flashId=id; };
   /* grips: pieces of the picture that drive a slider directly */
@@ -156,7 +156,8 @@ function Terrain(stage){
   /* probe points and hot zones are real buttons laid over the picture */
   T.overlay=()=>{ const place=(el,x,y)=>{ const t=`translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`; if(el._t!==t){ el._t=t; el.style.transform=t; } };
     T.pts.forEach(p=>{ const q=T.nodeAt(p.node); place(p.el,q[0],q[1]); });
-    if(T.hot){ const a=T.nodeAt(T.hot.a), b=T.nodeAt(T.hot.b); place(T.hot.el,(a[0]+b[0])/2,(a[1]+b[1])/2); } };
+    if(T.hot){ const a=T.nodeAt(T.hot.a), b=T.nodeAt(T.hot.b); place(T.hot.el,(a[0]+b[0])/2,(a[1]+b[1])/2); }
+    T.gripEls.forEach(({el,grip})=>{ const q=M<.5&&T.grips.includes(grip)?T.gripAt(grip):null, on=q?"":"none"; if(el.style.display!==on) el.style.display=on; if(q) place(el,q[0],q[1]); }); };
 
   /* which nodes get a flat landing: corners, junctions, or any node that asks; ledges through a straight node stay one surface. Plan geometry only, so it is cached. */
   function index(){
@@ -279,7 +280,7 @@ function Terrain(stage){
       for(let u=-E+.04+((E-.04)%.2);u<U+E-.01;u+=.2){ const a=iso(u,-E,0), b=iso(u,V+E,0); f.moveTo(a[0],a[1]); f.lineTo(b[0],b[1]); }
       for(let v=-E+.04+((E-.04)%.2);v<V+E-.01;v+=.2){ const a=iso(-E,v,0), b=iso(U+E,v,0); f.moveTo(a[0],a[1]); f.lineTo(b[0],b[1]); } f.stroke();
       f.strokeStyle=rgb(P.edge,.5); slabPath(f); f.stroke();
-      const z=iso(U+E-.18,V+E-.06,0); f.font=`500 11px ${getComputedStyle(document.body).getPropertyValue("--f-mono")||"monospace"}`; f.fillStyle=rgb(P.muted); f.textAlign="right"; f.fillText("0 V",z[0]+2,z[1]+2);
+      const z=iso(U+E-.18,V+E-.06,0); f.font=`500 ${labelPx(11)}px ${FONT.mono}`; f.fillStyle=rgb(P.muted); f.textAlign="right"; f.fillText("0 V",z[0]+2,z[1]+2);
     }
     g.save(); g.globalAlpha=1-M; g.setTransform(1,0,0,1,0,0); g.drawImage(floorCv,0,0); g.restore();
   }
@@ -302,6 +303,8 @@ function Terrain(stage){
     g.textBaseline="alphabetic";
   }
   const FONT={};
+  /* picture labels: a phone-sized frame gets larger ones */
+  const labelPx=px=>geo.sc<200?Math.max(px+2,14.5):px;
   const tag=(g,t,x,y,col,size=13,al="center",w=500)=>{ g.font=`${w} ${size}px ${FONT.mono}`; g.textAlign=al; g.lineJoin="round"; g.lineWidth=4; g.strokeStyle=PAL.bgS; g.strokeText(t,x,y); g.fillStyle=col; g.fillText(t,x,y); };
 
   /* the stream. Width and speed each go as the square root of current, over a fixed grain of charge,
@@ -324,11 +327,16 @@ function Terrain(stage){
     const col=hot>.45?rgb(mix(P.accent,P.dark?P.hot:[255,255,255],clamp((hot-.45)*1.6,0,1))):P.accentS, streak=clamp(vel*.055,1,spacing*.8);
     /* the water under the grains */
     const shrink=1-M*.75, walk=sgn>0?poly:poly.slice().reverse(), lens=sgn>0?pl:pl.slice().reverse();
-    g.fillStyle=rgb(P.accent,(P.dark?.3:.2)*fade);
+    const small=sc<200; g.fillStyle=rgb(P.accent,(small?(P.dark?.5:.4):(P.dark?.3:.2))*fade);
     for(let i=0;i<walk.length-1;i++){ const a=walk[i], b=walk[i+1], l=lens[i]/sc; if(l<1e-6) continue; const nu=-(b.v-a.v)/l*w*shrink, nv=(b.u-a.u)/l*w*shrink, p1=corner(a,nu,nv,a.z), p2=corner(b,nu,nv,b.z), p3=corner(b,-nu,-nv,b.z), p4=corner(a,-nu,-nv,a.z); poly4(g,p1,p2,p3,p4); g.fill(); }
     /* the grains: each lane a fixed row, so changing the current never scrambles them */
     g.strokeStyle=col; g.lineCap="round"; g.lineWidth=lw;
-    LANES.forEach((j,ix)=>{ const l=j*LANE, al=Math.abs(l); if(al>w+LANE*.35) return; const a=clamp((w-al)/(LANE*.7)+.6,.25,1); g.globalAlpha=a*fade;
+    /* too small for separate grains to read: long streaks on a solid body, the same lanes at the same speed */
+    if(small){ const dash=spacing*1.5, gap=spacing*.7; g.lineCap="butt"; g.lineWidth=Math.max(lw,2)+.3; g.setLineDash([dash,gap]);
+      LANES.forEach((j,ix)=>{ if(j%2) return; const l=j*LANE, al=Math.abs(l); if(al>w+LANE*.35) return; g.globalAlpha=clamp((w-al)/(LANE*.7)+.7,.35,1)*fade; g.lineDashOffset=-((T.phi[e.id]||0)*(1-.06*Math.abs(j))+ix*spacing*.53-(sgn>0?offHere:0)); g.beginPath(); let first=true;
+        for(let i=0;i<walk.length-1;i++){ const A=walk[i], B=walk[i+1], d=lens[i]; if(d<.5) continue; const nu=-(B.v-A.v)/(d/sc)*l*shrink, nv=(B.u-A.u)/(d/sc)*l*shrink, p=corner(A,nu,nv,A.z), q=corner(B,nu,nv,B.z); if(first){ g.moveTo(p[0],p[1]); first=false; } else g.lineTo(p[0],p[1]); g.lineTo(q[0],q[1]); }
+        g.stroke(); }); g.setLineDash([]); g.lineDashOffset=0; }
+    else LANES.forEach((j,ix)=>{ const l=j*LANE, al=Math.abs(l); if(al>w+LANE*.35) return; const a=clamp((w-al)/(LANE*.7)+.6,.25,1); g.globalAlpha=a*fade;
       const prof=1-.06*Math.abs(j), ph=(T.phi[e.id]||0)*prof+ix*spacing*.37-(sgn>0?offHere:0);
       let carry=0; g.beginPath();
       for(let i=0;i<walk.length-1;i++){ const A=walk[i], B=walk[i+1], d=lens[i]; if(d<.5) continue;
@@ -350,15 +358,15 @@ function Terrain(stage){
     const D=T.desc, P=PAL, a1=1-M;
     Object.keys(D.nodes).forEach(id=>{ const n=D.nodes[id], z=T.zs[id]||0, q=T.nodeAt(id,M);
       if(n.gauge&&M<1){ g.save(); g.globalAlpha=a1; const top=Math.max(...n.gauge), f=iso(n.at[0],n.at[1],0), t=iso(n.at[0],n.at[1],top); g.strokeStyle=P.accentS; g.lineWidth=1.5; g.setLineDash([3,4]); g.beginPath(); g.moveTo(f[0],f[1]); g.lineTo(t[0],t[1]); g.stroke(); g.setLineDash([]);
-        n.gauge.forEach(v=>{ const p=iso(n.at[0],n.at[1],v); g.strokeStyle=P.accentS; g.lineWidth=1.5; g.beginPath(); g.moveTo(p[0]-7,p[1]); g.lineTo(p[0]+7,p[1]); g.stroke(); tag(g,v+" V",p[0]+12,p[1]+4,P.accentS,12,"left"); }); g.restore(); }
-      if(n.was!==undefined&&M<1&&Math.abs(n.was-z)>.02){ const w=iso(n.at[0],n.at[1],n.was), p=iso(n.at[0],n.at[1],z); g.save(); g.globalAlpha=a1; g.strokeStyle=P.accentS; g.lineWidth=1.5; g.setLineDash([3,4]); g.beginPath(); g.moveTo(p[0],p[1]); g.lineTo(w[0],w[1]); g.stroke(); g.setLineDash([]); g.beginPath(); g.ellipse(w[0],w[1],HW*geo.sc*.9,HW*geo.sc*.34,0,0,7); g.stroke(); if((n.was-z)*geo.hs>30) tag(g,n.wasLabel||"",w[0],w[1]-HW*geo.sc*.34-6,P.mutedS,12); g.restore(); }
-      if(n.tag) tag(g,n.tag,q[0]+(n.tagOff?n.tagOff[0]:0),q[1]+(n.tagOff?n.tagOff[1]:-14),n.tagc?P[n.tagc+"S"]:P.inkS,clamp(geo.sc*.05,13,16));
+        n.gauge.forEach(v=>{ const p=iso(n.at[0],n.at[1],v); g.strokeStyle=P.accentS; g.lineWidth=1.5; g.beginPath(); g.moveTo(p[0]-7,p[1]); g.lineTo(p[0]+7,p[1]); g.stroke(); tag(g,v+" V",p[0]+12,p[1]+4,P.accentS,labelPx(12),"left"); }); g.restore(); }
+      if(n.was!==undefined&&M<1&&Math.abs(n.was-z)>.02){ const w=iso(n.at[0],n.at[1],n.was), p=iso(n.at[0],n.at[1],z); g.save(); g.globalAlpha=a1; g.strokeStyle=P.accentS; g.lineWidth=1.5; g.setLineDash([3,4]); g.beginPath(); g.moveTo(p[0],p[1]); g.lineTo(w[0],w[1]); g.stroke(); g.setLineDash([]); g.beginPath(); g.ellipse(w[0],w[1],HW*geo.sc*.9,HW*geo.sc*.34,0,0,7); g.stroke(); if((n.was-z)*geo.hs>30) tag(g,n.wasLabel||"",w[0],w[1]-HW*geo.sc*.34-6,P.mutedS,labelPx(12)); g.restore(); }
+      if(n.tag) tag(g,n.tag,q[0]+(n.tagOff?n.tagOff[0]:0),q[1]+(n.tagOff?n.tagOff[1]:-14),n.tagc?P[n.tagc+"S"]:P.inkS,labelPx(clamp(geo.sc*.05,13,16)));
     });
     if(D.walk){ const w=walkAt(D,T.zs,D.walk), f=iso(w.u,w.v,0), p=iso(w.u,w.v,w.z), r=clamp(geo.sc*.032,6,10);
       g.save(); g.globalAlpha=a1; g.strokeStyle=P.inkS; g.lineWidth=1.5; g.setLineDash([2,3]); g.beginPath(); g.moveTo(f[0],f[1]); g.lineTo(p[0],p[1]-r); g.stroke(); g.setLineDash([]);
       g.beginPath(); g.ellipse(f[0],f[1],r*.9,r*.32,0,0,7); g.fillStyle=rgb(P.shadow,.25); g.fill();
       g.beginPath(); g.arc(p[0],p[1]-r,r,0,7); g.fillStyle=P.inkS; g.fill(); g.lineWidth=2; g.strokeStyle=P.bgS; g.stroke();
-      tag(g,w.z.toFixed(1)+" V",p[0],p[1]-r*2-6,P.inkS,14); g.restore(); }
+      tag(g,w.z.toFixed(1)+" V",p[0],p[1]-r*2-6,P.inkS,labelPx(14)); g.restore(); }
   }
   /* meter leads, and the height difference they read */
   function drawLeads(g){
@@ -377,7 +385,22 @@ function Terrain(stage){
     for(let i=T.rings.length-1;i>=0;i--){ const r=T.rings[i]; r.t+=dt/r.dur; if(r.t>=1){ T.rings.splice(i,1); continue; } const a=T.nodeAt(r.a,0), b=T.nodeAt(r.b,0), za=T.zs[r.a]||0, zb=T.zs[r.b]||0, x=(a[0]+b[0])/2, y=(a[1]+b[1])/2+(za+zb)/2*geo.hs, e=1-(1-r.t)*(1-r.t), R=e*r.r*geo.sc;
       g.save(); g.globalAlpha=(1-r.t)*.8; g.strokeStyle=P.accentS; g.lineWidth=2+3*(1-r.t); g.beginPath(); g.ellipse(x,y,R*.95,R*.95*geo.k/geo.c,0,0,7); g.stroke(); g.restore(); }
     if(T.sparks.length){ g.lineCap="round"; g.lineWidth=2; for(let i=T.sparks.length-1;i>=0;i--){ const s=T.sparks[i]; s.life-=dt; if(s.life<=0){ T.sparks.splice(i,1); continue; } s.vy+=760*dt; const x0=s.x, y0=s.y; s.x+=s.vx*dt; s.y+=s.vy*dt; g.strokeStyle=rgb(mix(P.accent,P.hot,clamp(s.life*1.6,0,1)),clamp(s.life*2.2,0,1)); g.beginPath(); g.moveTo(x0-s.vx*.012,y0-s.vy*.012); g.lineTo(s.x,s.y); g.stroke(); } g.lineCap="butt"; }
-    if(T.smoke.length) drawSmoke(g,T.smoke,dt);
+    drawPlume(g,dt);
+  }
+  /* burn-out: a bite of fire, then a billowing column that keeps smouldering. Soft sprites, drawn small and cheap. */
+  let puffKey="", puff=null, fire=null;
+  const sprite=(col,inner)=>{ const c=document.createElement("canvas"); c.width=c.height=64; const f=c.getContext("2d"), gr=f.createRadialGradient(32,32,2,32,32,32); gr.addColorStop(0,rgb(col,inner)); gr.addColorStop(.55,rgb(col,inner*.55)); gr.addColorStop(1,rgb(col,0)); f.fillStyle=gr; f.fillRect(0,0,64,64); return c; };
+  function drawPlume(g,dt){
+    const P=PAL, pl=T.plume; if(!pl&&!T.smoke.length) return;
+    if(puffKey!==P.key){ puffKey=P.key; puff=sprite(P.dark?[176,176,170]:[52,48,46],.95); fire=sprite(P.hot,1); }
+    const S=clamp(geo.sc/300,.6,1.15);
+    if(pl){ pl.age+=dt; const rate=pl.age<.5?70:pl.age<2.4?26:pl.age<8?5:0; pl.debt+=rate*dt; if(!rate&&!T.smoke.length) T.plume=null;
+      while(pl.debt>=1&&T.smoke.length<130){ pl.debt-=1; const hot=pl.age<.45, life=BC.rand(1.5,3)*(pl.age<2.4?1:.8); T.smoke.push({x:pl.x+BC.rand(-pl.spread,pl.spread),y:pl.y-BC.rand(0,10),vx:BC.rand(-22,22)*S,vy:-BC.rand(55,125)*S*(pl.age<2.4?1:.55),r:BC.rand(9,20)*S*(pl.age<2.4?1:.5),grow:BC.rand(26,48)*S*(pl.age<2.4?1:.5),life,max:life,seed:BC.rand(0,6.3),hot:hot?BC.rand(.25,.55):0}); } }
+    for(let i=T.smoke.length-1;i>=0;i--){ const p=T.smoke[i]; p.life-=dt; if(p.life<=0){ T.smoke.splice(i,1); continue; }
+      p.vx+=Math.sin(T.clock*1.7+p.seed)*46*S*dt; p.vy*=1-.22*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.r+=p.grow*dt; const f=p.life/p.max;
+      g.globalAlpha=Math.min(1,(1-f)*7)*f*(P.dark?.5:.55); g.drawImage(puff,p.x-p.r,p.y-p.r,p.r*2,p.r*2);
+      if(p.hot>0){ p.hot-=dt; if(p.hot>0){ const was=g.globalCompositeOperation; if(P.dark) g.globalCompositeOperation="lighter"; g.globalAlpha=Math.min(1,p.hot*3.4); const r=p.r*.8; g.drawImage(fire,p.x-r,p.y-r,r*2,r*2); g.globalCompositeOperation=was; } } }
+    g.globalAlpha=1;
   }
 
   function advance(dt){
@@ -700,7 +723,7 @@ BC.mountLesson=function(host,n,opts={}){
     step=L.steps[i]; const v=rec(n).vals;
     s=W.fresh(); step.setup(s,v);
     ui.end.hidden=true; ui.p.textContent=step.prompt; ui.i.textContent="";
-    $$(".lsPt,.lsHot",stage).forEach(e=>e.remove()); T.pts=[]; T.hot=null; T.leads=[]; T.ring=null; T.smoke.length=0; T.sparks.length=0; T.rings.length=0; T.prev={};
+    $$(".lsPt,.lsHot",stage).forEach(e=>e.remove()); T.pts=[]; T.hot=null; T.leads=[]; T.ring=null; T.smoke.length=0; T.plume=null; T.sparks.length=0; T.rings.length=0; T.prev={}; T.vm=null;
     buildControls(); buildNext();
     T.set(W.circuit(s)); sol=T.sol;
     update(); kick();
@@ -715,6 +738,8 @@ BC.mountLesson=function(host,n,opts={}){
     let h=""; const cellTarget=step.target;
     ui.ro.innerHTML=step.ro.map(k=>`<div class="ro"><div class="k">${esc(W.ro[k][0])}</div><div class="v" data-k="${k}">—</div></div>`).join("")+(cellTarget?`<div class="ro lsTarget"><div class="k">Target</div><div class="v">${esc(cellTarget.show(cellTarget.to))}</div></div>`:"");
     sliders=step.sliders||[]; T.grips=sliders.filter(x=>x.grip).map(x=>x.grip); stage.classList.toggle("grippy",T.grips.length>0);
+    /* a grip's hit area alone takes touch for itself, so a pan that starts anywhere else in the picture still scrolls the page */
+    $$(".lsGrip",stage).forEach(e=>e.remove()); T.gripEls=sliders.filter(x=>x.grip).map(x=>{ const el=document.createElement("div"); el.className="lsGrip"; el.setAttribute("aria-hidden","true"); stage.appendChild(el); return {el,grip:x.grip}; });
     if(sliders.length) h+=`<div class="lsSl">`+sliders.map(sd=>{ const id=`ls-${sd.k}`;
       const a=sd.log?`min="${Math.log10(sd.log[0])}" max="${Math.log10(sd.log[1])}" step="0.005"`:`min="${sd.min}" max="${sd.max}" step="${sd.step}"`;
       return `<div class="lsS"><label for="${id}">${esc(sd.label)}</label><input type="range" id="${id}" data-k="${sd.k}" ${a}><output for="${id}"></output></div>`; }).join("")+`</div>`;
@@ -806,7 +831,7 @@ BC.mountLesson=function(host,n,opts={}){
 
   /* ----- the end: the module's equations, each lit by a value the learner made ----- */
   function showEnd(){
-    step=null; T.grips=[]; stage.classList.remove("grippy"); ui.p.textContent=L.end.prompt; ui.i.textContent=""; ui.ro.innerHTML=""; ui.c.innerHTML=""; $$(".lsPt,.lsHot",stage).forEach(e=>e.remove());
+    step=null; T.grips=[]; T.gripEls=[]; $$(".lsGrip",stage).forEach(e=>e.remove()); stage.classList.remove("grippy"); ui.p.textContent=L.end.prompt; ui.i.textContent=""; ui.ro.innerHTML=""; ui.c.innerHTML=""; $$(".lsPt,.lsHot",stage).forEach(e=>e.remove());
     const r=rec(n), v=r.vals;
     ui.end.innerHTML=L.end.rows.map(row=>{ const eq=row.eq||c.formulas[row.f][0], what=row.what||c.formulas[row.f][1], have=row.need.every(k=>typeof v[k]==="number"), val=have?row.show(v):"—";
       return `<li><div class="eq">${esc(eq)}</div><div class="what">${esc(what)}</div><div class="lit">${esc(val)}</div><div class="from">step ${row.step}</div></li>`; }).join("");
