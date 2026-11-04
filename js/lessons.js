@@ -942,7 +942,7 @@ const power={
   busy:()=>false,
   ro:{
    src:["Source",(s,o)=>sgn(o.v.e)], out:["Load height",(s,o)=>volts(+o.v.lo.toFixed(2))], rip:["Ripple",s=>s.rip===null?"—":volts(+s.rip.toFixed(2))], was:["Before",s=>s.was===null?"—":volts(+s.was.toFixed(2))],
-   flow:["Load flow",(s,o)=>amps(o.I.R)], vin:["Into regulator",s=>volts(+s.vinAvg.toFixed(1))], fall:["Fall across it",s=>volts(+(s.vinAvg-PW.Vreg).toFixed(1))], heat:["Regulator heat",s=>watts(s.pAvg)]
+   flow:["Load flow",(s,o)=>amps(o.I.R)], vin:["Into regulator",s=>volts(+s.vinAvg.toFixed(1))], fall:["Fall across it",s=>s.reg?volts(+(s.vinAvg-PW.Vreg).toFixed(1)):"—"], heat:["Regulator heat",s=>watts(s.pAvg)]
   },
   val:{pk:s=>s.pk,rip:s=>s.rip===null?-1:s.rip},
   fail:{},
