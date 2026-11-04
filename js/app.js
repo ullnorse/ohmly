@@ -73,27 +73,23 @@ function pcbMap(){
 }
 
 /* ---------- home ---------- */
+/* ull-pocket's outline and largest top-side parts, in mm, from data/ull-pocket.json */
+const BOARD_RECTS="26,0,13,11 26.7,11.8,5.8,16.6 15.2,36.7,9.6,7.8 1,2.1,9.2,8.2 16.9,14.6,4.6,4 29.1,32.6,3.8,3.8 34.8,28.1,3.6,2.9 18.6,31.6,2.9,3.6 .9,12.6,3.3,2.9 20.9,18.9,1.8,4.2 15.5,23.5,4.2,1.8 15.5,26.1,4.2,1.8 31.3,42.6,3.5,1.9 23.5,13.6,2,2.7 5.4,12.4,2,2.3 14.9,15.2,1.4,2.9 21.8,.8,2.9,1.4 18.3,18.9,1.4,2.9 13,33.3,2,2".split(" ");
+const boardArt=()=>`<svg viewBox="-1 -1 42 46.5" width="58" height="64" aria-hidden="true"><rect x="0" y="0" width="40" height="44.5" rx="1" class="mapBd"/>${BOARD_RECTS.map(r=>{const [x,y,w,h]=r.split(",");return `<rect x="${x}" y="${y}" width="${w}" height="${h}" class="mapPt"/>`;}).join("")}${[[2.8,41.3],[37.2,41.3]].map(([x,y])=>`<circle cx="${x}" cy="${y}" r="1.4" class="mapHole"/>`).join("")}</svg>`;
+function courseMap(next){
+  const tile=c=>{ const p=prog(c), done=S.done[c.n];
+    return `<a class="mapT${done?" done":""}${c===next?" next":""}" href="#m-${c.n}" title="${esc(c.title)}" aria-label="Module ${c.n}: ${esc(c.title)}${done?", finished":""}"><span class="n">${done?"✓":pad(c.n)}</span><span class="s">${esc(c.short)}</span>${p>0&&!done?`<i style="width:${p/.9*100}%"></i>`:""}</a>`; };
+  return `<section class="map" aria-labelledby="mapH"><h2 id="mapH" class="sr">Course map</h2>
+    ${partKeys().map(p=>`<div class="mapRow"><h3><span class="mono">${p}</span> ${esc(D.PARTS[p].name)}</h3><div class="mapTiles">${M.filter(c=>c.part===p).map(tile).join("")}</div></div>`).join("")}
+    <div class="mapRow"><h3><span class="mono">›</span> Board</h3><div class="mapTiles"><a class="mapBoard" href="#teardown" aria-label="Teardown: one real board, part by part">${boardArt()}<span>Teardown</span></a></div></div>
+  </section>`;
+}
 function home(){
   const next=M.find(c=>!S.done[c.n])||M[0];
-  const started=S.xp>0||Object.keys(S.done).length;
-  const L=BC.level(S.xp), fin=M.filter(c=>S.done[c.n]).length;
-  return `
-  <header class="mast">
-    <h1 tabindex="-1">Electronics, learned at the bench.</h1>
-    <p class="lede">${word(M.length)} short modules. Each one explains an idea in plain language, then gives you a working circuit to change so you can see what happens. Free, in the browser, nothing to install.</p>
-    <div class="mastActions"><a class="btn primary big" href="#m-${next.n}">${started?`Continue with module ${next.n}`:"Start with module 1"} →</a><a class="text" href="#practice">or go straight to practice</a></div>
-  </header>
-  <figure class="fig" id="fig1"><div id="heroHost"></div>
-    <figcaption><b>Fig. 1</b>A 9 V battery and one resistor. Drag the slider: the dots are current, and the resistor heats up as the power rises. Module 1 explains why.</figcaption></figure>
-  <section class="contents" aria-labelledby="ch">
-    <div class="sectionHead spread"><h2 id="ch">Contents</h2>${started?`<a class="label" href="#log">${fin} of ${M.length} finished · logbook →</a>`:""}</div>
-    ${partKeys().map(p=>`<div class="part"><h3>Part ${p}. ${esc(D.PARTS[p].name)} <small>${esc(D.PARTS[p].desc)}</small></h3>
-      <table class="toc"><thead><tr><th scope="col">No.</th><th scope="col">Module</th><th scope="col" class="labs">Labs</th><th scope="col" style="text-align:right">Status</th></tr></thead><tbody>
-      ${M.filter(c=>c.part===p).map(c=>{const n=answeredIn(c), done=S.done[c.n];
-        return `<tr><td class="no">${pad(c.n)}</td><td class="t"><a href="#m-${c.n}">${esc(c.title)}</a><span>${esc(c.blurb)}</span></td><td class="labs">${c.labs.length}</td><td class="stat ${done?"done":""}">${done?"done":n?`${n}/${c.quiz.length}`:"—"}</td></tr>`;}).join("")}
-      </tbody></table></div>`).join("")}
-  </section>
-  `;
+  const started=S.xp>0||Object.keys(S.done).length, fin=M.filter(c=>S.done[c.n]).length, lp=BC.lessonProgress(next.n);
+  const where=lp&&lp.started&&!lp.done?`Lesson, step ${Math.min(lp.step+1,lp.total)} of ${lp.total}`:`${fin} of ${M.length} finished`;
+  return (started?`<header class="cont"><div><p class="label">Continue · module ${next.n} · ${esc(where)}</p><h1 tabindex="-1">${esc(next.title)}</h1></div><a class="btn primary big" href="#m-${next.n}">Continue →</a></header>`
+    :`<div class="heroL"><h1 tabindex="-1">Electronics, at the bench.</h1><div id="lessonHost"></div></div>`)+courseMap(next);
 }
 
 /* ---------- logbook ---------- */
@@ -317,9 +313,9 @@ function render(){
     $("#reset").addEventListener("click",()=>{$("#resetConfirm").hidden=false; $("#resetNo").focus();});
     $("#resetNo").addEventListener("click",()=>{$("#resetConfirm").hidden=true; $("#reset").focus();});
     $("#resetYes").addEventListener("click",()=>{const keep={sound:S.sound,theme:S.theme}; if(S.pxmm) keep.pxmm=S.pxmm; Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,BC.defaults(),keep); BC.save(); render(); $("#impMsg").className="note good"; $("#impMsg").textContent="All progress erased.";});
-  } else if(h==="home"||h==="view"){ currentKey="home"; v.innerHTML=home(); title="Ohmly · An interactive platform for learning electronics"; BC.mountHero($("#heroHost")); }
+  } else if(h==="home"||h==="view"){ currentKey="home"; v.innerHTML=home(); title="Ohmly · An interactive platform for learning electronics"; const lh=$("#lessonHost"); if(lh) BC.mountLesson(lh,1); }
   else { currentKey="404"; v.innerHTML=`<header class="stack"><h1 tabindex="-1">Not found</h1><p class="lede muted">There is nothing at this address. <a href="#home">Back to the contents</a>.</p></header>`; title="Not found · Ohmly"; }
-  document.title=title; document.body.classList.toggle("tdWide",currentKey==="teardown"); rail(currentKey); header(); window.scrollTo(0,0);
+  document.title=title; document.body.classList.toggle("tdWide",currentKey==="teardown"); document.body.classList.toggle("homeV",currentKey==="home"); rail(currentKey); header(); window.scrollTo(0,0);
   if(lab&&$("#lab-"+lab)) scrollToLab(lab);
   else { const h1=$("#view h1"); if(h1&&routed) h1.focus({preventScroll:true}); }
   routed=true;

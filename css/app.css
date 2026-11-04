@@ -95,31 +95,12 @@ main{padding-block:36px 90px;padding-left:max(20px,env(safe-area-inset-left,0px)
 .panel > h2{border-top:2px solid var(--rule);padding-top:10px;margin-bottom:16px}
 
 /* ---------- home ---------- */
-.mast{display:flex;flex-direction:column;gap:18px;padding-top:6px}
-.mast h1{max-width:19ch}
-.mastActions{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
-.mastActions a.text{font-size:.95rem}
 figure{margin:0}
-.fig{border:1px solid var(--rule)}
-.fig .figBody{padding:16px;display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:18px;align-items:stretch}
-.fig canvas{width:100%;height:210px;display:block;background:var(--bg);border:1px solid var(--line)}
-.fig .figSide{display:flex;flex-direction:column;gap:12px;justify-content:center}
 figcaption{border-top:1px solid var(--rule);padding:8px 16px;font-size:.88rem;color:var(--muted)}
 figcaption b{color:var(--ink);font-family:var(--f-display);font-weight:600;font-size:1rem;letter-spacing:.02em;margin-right:6px}
-.contents h2{margin-bottom:0}
 .part{margin-top:22px}
 .part h3{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
 .part h3 small{font-family:var(--f-body);font-weight:400;font-size:.9rem;color:var(--muted)}
-table.toc{width:100%;border-collapse:collapse;margin-top:8px}
-table.toc th{font-family:var(--f-mono);font-weight:400;font-size:.72rem;color:var(--muted);text-align:left;padding:4px 8px;border-bottom:1px solid var(--rule)}
-table.toc td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:baseline}
-table.toc td.no{font-family:var(--f-mono);font-size:.85rem;color:var(--muted);width:44px}
-table.toc td.t a{font-weight:500;text-decoration:none}
-table.toc td.t a:hover{text-decoration:underline}
-table.toc td.t span{display:block;font-size:.86rem;color:var(--muted);margin-top:2px}
-table.toc td.labs,table.toc td.stat{font-family:var(--f-mono);font-size:.8rem;color:var(--muted);text-align:right;white-space:nowrap;width:80px}
-table.toc td.stat.done{color:var(--accent)}
-table.toc tr:hover td{background:var(--sunk)}
 .logline{font-size:.92rem;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
 footer.site{max-width:1240px;margin:0 auto 28px;width:calc(100% - 40px)}
 .colophon{border-top:2px solid var(--rule);padding-top:10px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-family:var(--f-mono);font-size:.75rem;color:var(--muted)}
@@ -520,8 +501,7 @@ label.btn{cursor:pointer}
   nav.rail.open{display:block}
   .btn.railToggle{display:inline-flex;padding:5px 10px;font-size:.85rem}
   .lab .lb{grid-template-columns:minmax(0,1fr)}
-  .fig .figBody{grid-template-columns:minmax(0,1fr)}
-}
+  }
 @media (max-width:640px){
   header.top{gap:10px;flex-wrap:nowrap;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
   .iconBtn{width:30px}
@@ -535,8 +515,7 @@ label.btn{cursor:pointer}
   .meterGrid{grid-template-columns:1fr}
   .adRow{grid-template-columns:40px repeat(5,minmax(0,1fr)) 40px;gap:5px}
   .lcd{font-size:1.5rem}
-  table.toc td.labs{display:none}
-}
+  }
 @media (max-width:440px){ .lv{display:none} }
 
 /* ---------- module tabs ---------- */
@@ -565,6 +544,39 @@ label.btn{cursor:pointer}
   .modTabs small{display:none}
   .tabStack{gap:28px}
   .wrap>.pager,.wrap>.map{margin-top:18px}
+}
+
+/* ---------- home: the first thing is the circuit ---------- */
+.heroL{display:flex;flex-direction:column;gap:10px;min-height:min(calc(100svh - 110px),760px)}
+.heroL h1{font-size:clamp(1.6rem,3vw,2.2rem)}
+.cont{display:flex;justify-content:space-between;align-items:center;gap:14px 24px;flex-wrap:wrap;border-top:2px solid var(--rule);border-bottom:1px solid var(--line);padding:14px 0}
+.cont h1{font-size:clamp(1.7rem,4vw,2.5rem);margin-top:4px}
+@media (min-width:961px){ body.homeV .shell{grid-template-columns:minmax(0,1fr)} body.homeV nav.rail{display:none} }
+.map{display:flex;flex-direction:column;border-top:2px solid var(--rule)}
+.mapRow{display:grid;grid-template-columns:170px minmax(0,1fr);gap:12px;padding:12px 0;border-bottom:1px solid var(--line);align-items:start}
+.mapRow h3{font-size:1.05rem;padding-top:8px}
+.mapRow h3 .mono{color:var(--muted);font-size:.8rem;font-weight:400;margin-right:4px}
+.mapTiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px}
+.mapT{position:relative;display:flex;flex-direction:column;justify-content:center;min-height:52px;padding:5px 8px;border:1px solid var(--line);background:var(--surface);text-decoration:none;line-height:1.2;overflow:hidden}
+.mapT:hover{border-color:var(--ink);color:var(--ink)}
+.mapT .n{font-family:var(--f-mono);font-size:.68rem;color:var(--muted)}
+.mapT .s{font-size:.84rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mapT i{position:absolute;left:0;bottom:0;height:3px;background:var(--accent)}
+.mapT.done{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.mapT.done:hover{color:var(--bg)}
+.mapT.done .n{color:var(--bg)}
+.mapT.next{border:2px solid var(--accent)}
+.mapBoard{display:flex;align-items:center;gap:12px;grid-column:span 2;min-height:52px;padding:6px 10px;border:1px solid var(--line);background:var(--surface);text-decoration:none;font-weight:500;font-size:.9rem}
+.mapBoard:hover{border-color:var(--ink);color:var(--ink)}
+.mapBoard svg{flex:none}
+.mapBd{fill:var(--board);stroke:var(--board-edge)}
+.mapPt{fill:var(--copper)}
+.mapHole{fill:var(--bg)}
+@media (max-width:640px){
+  .heroL{min-height:calc(100svh - 64px)}
+  .mapRow{grid-template-columns:minmax(0,1fr);gap:6px}
+  .mapRow h3{padding-top:0}
+  .mapTiles{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 
 /* ---------- lesson: every region has a fixed height, so nothing moves between steps ---------- */
