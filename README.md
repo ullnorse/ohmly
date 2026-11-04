@@ -93,6 +93,8 @@ Parts with memory are companion models. `capacitor` holds `v0`, draws as a glass
 
 `opamp` is a tall tower from the floor to the output, stiff (1 mΩ) and set by `flip` with a secant on the whole circuit so the two inputs `ctl` and `ctl2` come out level; `lo` and `hi` clamp it to the rails (±9 V, gain 1e5, no input current), and both inputs draw dashed control lines.
 
+`ic555` is the 555 as a block: a stiff output tower from `a` (a floor node) to `b` (the OUT pin), `V`, `hi` (output high), `pins: {vcc, gnd, thr, dis?}` (node ids). The widget flips `hi` at 2/3 and 1/3 of the supply and closes a `nosch` switch for DIS. The Schematic draws a labelled box with the pins wired to their nodes. A `trace` with `flatOff: 1` fades out in the Schematic.
+
 `ldo` is an ideal linear regulator: `Vreg`, `Vdo`, `Rdo` and `Iset` (the load's flow); it passes `Iset` from input to output until headroom falls under `Vdo`, and its glow is (Vin - Vout) x I. The AC source is a `source` whose `V` the widget sets each step; `trace.pts2` adds a dashed second line.
 
 A description with `live: true` runs on its own clock: heights follow the model without the spring, and `vmax` may change, in which case the scale eases and the back walls relabel. `clock: {t, scale}` prints the time and how much it is slowed; `trace: {label, pts, tMax, yMax, yMin?, guides, ticks, side}` plots a run (`yMin` for a signal that goes negative). The `capacitor` symbol turns to suit a horizontal run, so one can sit in a line as well as across it. A widget with time adds `running(s)` and `quantum(s)`; under reduced motion the engine calls `tick` with one quantum every 650 ms.

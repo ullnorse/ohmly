@@ -554,7 +554,7 @@ function Terrain(stage){
   }
   /* the last run, plotted: time across, one quantity up, drawn by the same steps that move the picture */
   function drawTrace(g,W,H){
-    const tr=T.desc.trace; if(!tr) return; const P=PAL, w=clamp(W*.36,118,250), h=clamp(H*.24,62,130), left=tr.side==="left", x=(left?8:W-w-8)*(1-M)+(W*.58-w/2)*M, y=(left?48:8)*(1-M)+(H*.52-h/2)*M;   /* inside the loop in the schematic */
+    const tr=T.desc.trace; if(!tr) return; const fade=tr.flatOff?1-clamp(M*2.2,0,1):1; if(fade<=0) return; g.save(); g.globalAlpha*=fade; const P=PAL, w=clamp(W*.36,118,250), h=clamp(H*.24,62,130), left=tr.side==="left", x=(left?8:W-w-8)*(1-M)+(W*.58-w/2)*M, y=(left?48:8)*(1-M)+(H*.52-h/2)*M;   /* inside the loop in the schematic */
     g.fillStyle=rgb(P.bg,.86); g.strokeStyle=rgb(P.line); g.lineWidth=1; g.beginPath(); g.rect(x,y,w,h); g.fill(); g.stroke();
     const X=t=>x+6+clamp(t/tr.tMax,0,1)*(w-12), y0=tr.yMin||0, Y=v=>y+h-6-clamp((v-y0)/(tr.yMax-y0),0,1)*(h-24);
     (tr.guides||[]).forEach(gd=>{ g.strokeStyle=rgb(P.muted,.6); g.setLineDash([3,3]); g.beginPath(); g.moveTo(x+6,Y(gd.y)); g.lineTo(x+w-6,Y(gd.y)); g.stroke(); g.setLineDash([]); if(gd.t){ g.font=`500 ${labelPx(11)-1}px ${FONT.mono}`; g.textAlign="right"; g.fillStyle=P.mutedS; g.fillText(gd.t,x+w-6,Y(gd.y)-3); } });
@@ -562,6 +562,7 @@ function Terrain(stage){
     g.font=`500 ${labelPx(11)-1}px ${FONT.mono}`; g.textAlign="left"; g.fillStyle=P.mutedS; g.fillText(tr.label,x+6,y+14);
     if(tr.pts2&&tr.pts2.length){ g.strokeStyle=rgb(P.muted,.9); g.lineWidth=1.5; g.setLineDash([3,3]); g.beginPath(); tr.pts2.forEach((p,i)=>i?g.lineTo(X(p[0]),Y(p[1])):g.moveTo(X(p[0]),Y(p[1]))); g.stroke(); g.setLineDash([]); }
     if(tr.pts.length){ g.strokeStyle=P.accentS; g.lineWidth=2; g.lineJoin="round"; g.beginPath(); tr.pts.forEach((p,i)=>i?g.lineTo(X(p[0]),Y(p[1])):g.moveTo(X(p[0]),Y(p[1]))); g.stroke(); const l=tr.pts[tr.pts.length-1]; g.beginPath(); g.arc(X(l[0]),Y(l[1]),3,0,7); g.fillStyle=P.accentS; g.fill(); }
+    g.restore();
   }
 
   function advance(dt){
@@ -1084,6 +1085,98 @@ const amp={
 };
 const lift=s=>{ s.v0=amOut(s); s.t=0; s.slew=true; };
 
+/* ---------- module 10: a tank between two marks, flipped by a 555 ----------
+   Stated model. R1 and R2 are the module's names for the two astable resistors (RA, RB in the code). 9 V supply. The 555 is ideal: its output is 9 V or 0 V through 1 mΩ, it goes low when the tank passes 2/3 of supply and high again at 1/3. In the astable its discharge pin shorts RB's lower end to ground while the output is low. Real time (no slowing); backward Euler with 250 steps per time constant of the phase, and each flip is placed by interpolating between steps. Rates and times are measured from a silent run of the same model. */
+const OS={V:9};
+TYPES.ic555={tall:true, g:()=>1e3, j:e=>1e3*(e.hi?e.V:0), solid:c=>c.tower(), symbol:sym555};
+function sym555(c){
+  const {g,e}=c, P=PAL, pn=e.pins, vc=c.at(pn.vcc), gn=c.at(pn.gnd), o=c.at(e.b), hw=Math.min(o[0]-18-vc[0],100), r=vc[0]+hw, l=vc[0]-hw, top=vc[1]+16, bot=gn[1]-16;
+  g.strokeStyle=P.inkS; g.lineWidth=2.5; g.lineJoin="round";
+  g.beginPath(); g.moveTo(vc[0],vc[1]); g.lineTo(vc[0],top); g.moveTo(gn[0],gn[1]); g.lineTo(gn[0],bot); g.stroke();
+  g.fillStyle=P.bgS; g.beginPath(); g.rect(l,top,r-l,bot-top); g.fill(); g.stroke();
+  const pins=[["OUT",o]]; if(pn.dis) pins.push(["DIS",c.at(pn.dis)]); pins.push(["THR/TRG",c.at(pn.thr)]);
+  g.font=`600 11px ${c.font}`; g.textAlign="right"; g.textBaseline="middle";
+  pins.forEach(([t,n],i)=>{ g.strokeStyle=P.inkS; g.beginPath(); g.moveTo(r,n[1]); g.lineTo(n[0],n[1]); g.stroke(); if(i){ g.fillStyle=P.inkS; g.beginPath(); g.arc(n[0],n[1],3.5,0,7); g.fill(); } g.fillStyle=P.mutedS; g.fillText(t,r-6,n[1]); });
+  g.textAlign="center"; g.fillText("VCC",vc[0],top+12); g.fillText("GND",gn[0],bot-12);
+  g.fillStyle=P.inkS; g.font=`700 22px ${c.font}`; g.fillText("555",(l+r)/2,(top+bot)/2);
+}
+const osMarks=()=>[{z:OS.V},{z:OS.V*2/3,t:"upper"},{z:OS.V/3,t:"lower"}];
+const osTau=s=>s.layout==="std"?{hi:(s.RA+s.RB)*s.C,lo:s.RB*s.C}:{hi:s.R*s.C,lo:s.R*s.C};
+function osCircuit(s){
+  const V=OS.V, lay=s.layout, mk=osMarks(), cap=(id,a,b)=>({id,t:"capacitor",a,b,C:s.C,v0:s.vc,box:tankBox(s.C),rim:V+1.4,marks:mk,capLabel:fmt(s.C,"F")});
+  const src={id:"src",t:"source",a:"g",b:"e",V,box:.15,tag:V+" V",tagOff:[0,-12],tagf:[-30,44]};
+  let nodes, edges;
+  if(lay==="fill"){
+    nodes={g:{at:[0,.8]},e:{at:[0,.8],flat:[0,.3]},n0:{at:[0,0]},sa:{at:[.16,0]},sb:{at:[.5,0]},ra:{at:[.62,0]},c:{at:[1.7,0]},tp:{at:[1.7,.38],flat:[1.7,.24]},tb:{at:[1.7,.38],flat:[1.7,.56]},f:{at:[1.7,.8]},j:{at:[.62,.8]}};
+    edges=[src,{id:"w0",t:"wire",a:"e",b:"n0"},{id:"w1",t:"wire",a:"n0",b:"sa"},{id:"sw",t:"switch",a:"sa",b:"sb",closed:s.closed},{id:"w2",t:"wire",a:"sb",b:"ra"},
+      {id:"R",t:"resistor",a:"ra",b:"c",R:s.R,label:fmt(s.R,"Ω"),lab:[-.3,.3],labf:[0,28]},{id:"w3",t:"wire",a:"c",b:"tp"},cap("C","tp","tb"),
+      {id:"w4",t:"wire",a:"tb",b:"f"},{id:"w5",t:"wire",a:"f",b:"j"},{id:"w6",t:"wire",a:"j",b:"g"}];
+    return {gnd:"g",vmax:12,iref:1.5e-4,pref:.5,rspan:[1e4,2.2e5],live:true,nodes,edges,clock:clockOf(s),trace:s.silent?null:osTrace(s)};
+  }
+  const std=lay==="std", pins={vcc:"vcc",gnd:"gb",thr:"tp"}; if(std) pins.dis="dn";
+  nodes={g:{at:[0,.8]},e:{at:[0,.8],flat:[0,.3]},n0:{at:[0,0]},gb:{at:[.7,.8]},ob:{at:[.7,.45],flat:[.7,.8]},o:{at:[.7,.45],flat:[1.15,.14]}};
+  edges=[src,{id:"w0",t:"wire",a:"e",b:"n0"},{id:"wob",t:"wire",a:"ob",b:"gb",nosch:1},{id:"w6",t:"wire",a:"gb",b:"g"},
+    {id:"U",t:"ic555",a:"ob",b:"o",V,hi:s.hi,box:.1,pins,tag:"out "+(s.hi?V:0)+" V",tagOff:[0,-14],tagf:[28,-16]}];
+  if(!std){
+    Object.assign(nodes,{vcc:{at:[.7,0]},c:{at:[1.35,.45],flat:[1.7,.14]},tp:{at:[1.75,.45],flat:[1.7,.5]},tb:{at:[1.75,.45],flat:[1.7,.8]},f:{at:[1.75,.8],flat:[1.7,.8]}});
+    edges.push({id:"w1",t:"wire",a:"n0",b:"vcc"},{id:"R",t:"resistor",a:"o",b:"c",R:s.R,rating:.5,label:fmt(s.R,"Ω"),lab:[0,.2],labf:[0,26]},{id:"w3",t:"wire",a:"c",b:"tp"},cap("C","tp","tb"),{id:"w4",t:"wire",a:"tb",b:"f"},{id:"w5",t:"wire",a:"f",b:"gb"});
+  } else {
+    Object.assign(nodes,{vcc:{at:[.55,0],flat:[.7,0]},vr:{at:[.8,0],flat:[1.7,0]},dn:{at:[1.2,0],flat:[1.7,.28]},th:{at:[1.7,0],flat:[1.7,.54]},tp:{at:[1.7,.4],flat:[1.7,.54]},tb:{at:[1.7,.4],flat:[1.7,.8]},f:{at:[1.7,.8]},gd:{at:[1.2,.8]}});
+    const V2={labf:[-34,0]};
+    edges.push({id:"w1",t:"wire",a:"n0",b:"vcc"},{id:"w1b",t:"wire",a:"vcc",b:"vr"},{id:"RA",t:"resistor",a:"vr",b:"dn",R:s.RA,rating:.5,label:"R1 "+fmt(s.RA,"Ω"),lab:[-.1,.62],...V2},{id:"RB",t:"resistor",a:"dn",b:"th",R:s.RB,rating:.5,label:"R2 "+fmt(s.RB,"Ω"),lab:[.1,.62],...V2},
+      {id:"w3",t:"wire",a:"th",b:"tp"},cap("C","tp","tb"),{id:"w4",t:"wire",a:"tb",b:"f"},{id:"w5",t:"wire",a:"f",b:"gd"},{id:"w5b",t:"wire",a:"gd",b:"gb"},{id:"dis",t:"switch",a:"dn",b:"gd",closed:!s.hi,nosch:1});
+  }
+  return {gnd:"g",vmax:12,iref:std?2.5e-4:1.5e-4,pref:.5,rspan:std?[3e3,3e5]:[1e4,2.2e5],live:true,nodes,edges,clock:clockOf(s),trace:s.silent?null:osTrace(s)};
+}
+function osTrace(s){
+  const guides=[{y:OS.V,t:OS.V+" V"},{y:OS.V*2/3,t:"upper"},{y:OS.V/3,t:"lower"}];
+  return {label:"Level",pts:s.tr,tMax:s.layout==="fill"?5*s.R*s.C:osWin(s),yMax:OS.V*1.06,guides,flatOff:1};
+}
+const osWin=s=>2*osMeas(s).per;
+/* advance by run seconds; each flip is timed between steps */
+function osAdv(s,run){
+  const d=osCircuit(s), cap=d.edges.find(e=>e.id==="C"), U=d.edges.find(e=>e.id==="U"), dis=d.edges.find(e=>e.id==="dis"), T=osTau(s), up=OS.V*2/3, lo=OS.V/3; let left=run, o=null;
+  while(left>1e-12){
+    const tau=s.layout==="fill"?T.hi:(s.hi?T.hi:T.lo), h=Math.min(left,tau/250), v0=cap.v0||0;
+    o=timeStep(d,h,h,1); s.t+=h; left-=h; const v1=cap.v0; s.vc=v1;
+    if(s.layout==="fill") continue;
+    const thr=s.hi?up:lo;
+    if(s.hi?v1>=thr:v1<=thr){ s.ev.push(s.t-h+h*(thr-v0)/(v1-v0)); if(s.ev.length>4) s.ev.shift(); s.hi=!s.hi; U.hi=s.hi; if(dis) dis.closed=!s.hi; if(s.hi) s.cyc++; }
+  }
+  s.sol=o; return o;
+}
+/* a silent run from the lower mark: high time, low time, period */
+function osMeas(s){
+  const k=[s.layout,s.R,s.C,s.RA,s.RB].join(); if(s.mk===k) return s.mv;
+  const m={layout:s.layout,R:s.R,C:s.C,RA:s.RA,RB:s.RB,vc:OS.V/3,hi:true,t:0,ev:[],cyc:0,silent:1}; let n=0;
+  while(m.ev.length<3&&n++<400) osAdv(m,osTau(m).hi*.2);
+  const e=m.ev.slice(-3), tL=e[1]-e[0], tH=e[2]-e[1], per=e[2]-e[0];
+  s.mk=k; s.mv={tH,tL,per,f:1/per,duty:tH/per}; return s.mv;
+}
+const osOn=s=>s.layout!=="fill"&&s.run;
+const osRun=s=>s.layout==="fill"?s.closed&&s.t<8*s.R*s.C:s.run;
+const hz=f=>(f>=10?f.toFixed(0):f.toFixed(2))+" Hz";
+const osw={
+  circuit:s=>{ if(s.layout!=="fill"){ const k=[s.R,s.C,s.RA,s.RB].join(); if(s.wk!==k){ s.wk=k; s.tr=[]; s.tw=s.t; s.cyc=0; } } return osCircuit(s); },
+  fresh:()=>({layout:"fill",R:68e3,C:22e-6,RA:33e3,RB:33e3,closed:false,run:false,hi:true,vc:0,t:0,slow:1,cyc:0,ev:[],tr:[],tw:0,wk:"",mk:"",mv:null,was:null,sol:null}),
+  running:osRun,
+  quantum:s=>s.layout==="fill"?s.R*s.C*.25:(s.hi?osTau(s).hi:osTau(s).lo)/3,
+  tick(s,sol,dt){
+    if(!dt||!osRun(s)) return null;
+    osAdv(s,dt);
+    const w=s.layout==="fill"?5*s.R*s.C:osWin(s); if(s.layout!=="fill"&&s.t-s.tw>w){ s.tr=[]; s.tw=s.t; }
+    const n=s.tr.length; if(!n||s.t-s.tw-s.tr[n-1][0]>=w/240) s.tr.push([s.t-s.tw,s.vc]);
+    return null;
+  },
+  busy:()=>false,
+  ro:{ level:["Tank level",s=>volts(+s.vc.toFixed(2))], pct:["Filled",s=>Math.round(s.vc/OS.V*100)+"%"], out:["Output",s=>s.layout==="fill"?"—":s.hi?"High":"Low"],
+    rate:["Blink rate",s=>osOn(s)?hz(osMeas(s).f):"—"], was:["Before",s=>s.was===null?"—":hz(s.was)],
+    high:["High time",s=>osOn(s)?secs(osMeas(s).tH):"—"], low:["Low time",s=>osOn(s)?secs(osMeas(s).tL):"—"], duty:["High",s=>osOn(s)?Math.round(osMeas(s).duty*100)+"%":"—"] },
+  val:{f:s=>osOn(s)?osMeas(s).f:-1,duty:s=>osOn(s)?osMeas(s).duty:-1},
+  fail:{},
+  alt:s=>s.layout==="fill"?`tank level ${volts(+s.vc.toFixed(2))} of ${OS.V} volts, filling through ${fmt(s.R,"Ω")}, marks at 3 and 6 volts.`:`555 flipping a ${fmt(s.C,"F")} tank between 3 and 6 volts, ${s.layout==="std"?"R1 "+fmt(s.RA,"Ω")+", R2 "+fmt(s.RB,"Ω"):"through "+fmt(s.R,"Ω")}, output ${s.hi?"high":"low"}, tank ${volts(+s.vc.toFixed(2))}.`
+};
+
 BC.LESSONS={
  1:{
   xp:40, widget:loop, hotspot:{a:"sa",b:"sb"},
@@ -1462,6 +1555,50 @@ BC.LESSONS={
   }
  }
  ,
+ 10:{
+  xp:40, widget:osw, hotspot:{a:"sa",b:"sb"},
+  steps:[
+   {id:"fill",kind:"do",prompt:"Close the switch. Watch the stream as the tank climbs to the upper mark.",
+    insight:"The higher the level, the flatter the slope and the thinner the stream: the climb keeps slowing.",
+    setup:()=>{}, ro:["level","pct"], hot:true,
+    actions:[{label:s=>s.closed?"Open switch":"Close switch",run:s=>{s.closed=!s.closed;}}],
+    goal:s=>s.vc>=OS.V*2/3},
+   {id:"loop",kind:"predict",prompt:"Output drops to 0 V at the upper mark, rises at the lower. Then...?",
+    insight:"Nothing tells it to stop. Each flip sets up the next one, forever: an oscillator.",
+    setup:s=>{s.layout="loop";s.vc=OS.V/3;}, ro:["level","out"], cols:1,
+    choices:[{t:"It stops at the lower mark"},{t:"It keeps going by itself",ok:1},{t:"It fades out"}],
+    reveal:s=>{s.run=true;s.cyc=0;}, settled:s=>s.cyc>=2},
+   {id:"rate",kind:"hit",prompt:"Slide R or C until it blinks once a second.",
+    insight:"A bigger R or C makes every fill and drain slower, so the blink slows.",
+    setup:(s,v)=>{s.layout="loop";s.vc=OS.V/3;s.run=true;}, ro:["rate","level"],
+    sliders:[{k:"R",label:"R",log:[1e4,2.2e5],grip:{edge:"R"}},{k:"C",label:"Tank",log:[1e-5,1e-4],fmt:s=>fmt(s.C,"F"),grip:{edge:"C"}}],
+    target:{of:"f",to:1,tol:.05,show:p=>p+" Hz"}, keep:(s,v)=>{v.hitR=s.R;v.hitC=s.C;}},
+   {id:"double",kind:"predict",prompt:"Double the tank. The blink rate...?",
+    insight:"Twice the tank needs twice the charge for the same climb, so each flip comes later: half the rate.",
+    setup:(s,v)=>{s.layout="loop";s.vc=OS.V/3;s.run=true;s.R=v.hitR||s.R;s.C=v.hitC||s.C;}, ro:["was","rate"], cols:3,
+    choices:[{t:"Doubles"},{t:"Halves",ok:1},{t:"Stays"}],
+    reveal:s=>{s.was=osMeas(s).f;s.C*=2;}, settled:s=>s.cyc>=1},
+   {id:"duty",kind:"predict",prompt:"Fill through R1 + R2, drain through R2 alone. The output is high...?",
+    insight:"Filling crosses both resistors, draining only one. The slower fill means a longer high time: always over 50%.",
+    setup:s=>{s.layout="std";s.vc=OS.V/3;}, ro:["high","low","duty"], cols:1,
+    choices:[{t:"Under half the time"},{t:"Exactly half"},{t:"Over half the time",ok:1}],
+    reveal:s=>{s.run=true;s.cyc=0;}, settled:s=>s.cyc>=2},
+   {id:"tune",kind:"hit",prompt:"Shrink R1 until the output is high 60% of the time.",
+    insight:"Smaller R1, faster fill, shorter high time. The duty falls toward 50% but never below.",
+    setup:s=>{s.layout="std";s.vc=OS.V/3;s.run=true;s.RA=1e5;}, ro:["high","low","duty"],
+    sliders:[{k:"RA",label:"R1",log:[3300,3.3e5],grip:{edge:"RA"}}],
+    target:{of:"duty",to:.6,tol:.04,show:p=>Math.round(p*100)+"%"}, keep:(s,v)=>{ const m=osMeas(s); v.RA=s.RA;v.RB=s.RB;v.C=s.C;v.tH=m.tH;v.tL=m.tL;v.f=m.f;v.duty=m.duty; }}
+  ],
+  end:{
+   prompt:"These are the equations. Every number is yours.",
+   rows:[
+    {f:1,step:6,need:["RA","RB","C","tH"],show:v=>`0.693 × (${fmt(v.RA,"Ω")} + ${fmt(v.RB,"Ω")}) × ${fmt(v.C,"F")} = ${secs(.693*(v.RA+v.RB)*v.C)}, you measured ${secs(v.tH)}`},
+    {f:2,step:6,need:["RB","C","tL"],show:v=>`0.693 × ${fmt(v.RB,"Ω")} × ${fmt(v.C,"F")} = ${secs(.693*v.RB*v.C)}, you measured ${secs(v.tL)}`},
+    {f:0,step:6,need:["RA","RB","C","f"],show:v=>`1.44 / ((${fmt(v.RA,"Ω")} + 2 × ${fmt(v.RB,"Ω")}) × ${fmt(v.C,"F")}) = ${hz(1.44/((v.RA+2*v.RB)*v.C))}, you measured ${hz(v.f)}`},
+    {f:3,step:6,need:["RA","RB","duty"],show:v=>`(${fmt(v.RA,"Ω")} + ${fmt(v.RB,"Ω")}) / (${fmt(v.RA,"Ω")} + 2 × ${fmt(v.RB,"Ω")}) = ${Math.round((v.RA+v.RB)/(v.RA+2*v.RB)*100)}%, you set ${Math.round(v.duty*100)}%`}
+   ]
+  }
+ },
  15:{
   xp:40, widget:amp,
   steps:[
