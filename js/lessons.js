@@ -1358,7 +1358,7 @@ const mot={
   busy:()=>false,
   ro:{
    speed:["Speed",s=>rpmTxt(s.w)], emf:["Back-EMF",s=>volts(+(MT.k*s.w).toFixed(2))], cur:["Current",(s,o)=>amps(motI(s,o))],
-   heat:["Heat",(s,o)=>watts(motI(s,o)*motI(s,o)*MT.R)], load:["Load",s=>s.hasLoad?mNm(s.load):"—"], supply:["Supply",s=>volts(s.V)],
+   heat:["Heat",(s,o)=>{ const p=motI(s,o)*motI(s,o)*MT.R; return p>=5e-4&&p<1?Math.round(p*1e3)+" mW":watts(p); }], load:["Load",s=>s.hasLoad?mNm(s.load):"—"], supply:["Supply",s=>volts(s.V)],
    fuse:["Fuse",s=>s.fuse==="blown"?"blown":MT.fuse+" A"], flow:["Supply flow",(s,o)=>amps(o.I.src)]
   },
   val:{I:s=>mIss(s.V,s.load), rpm:s=>rpmOf(mWss(s.V,s.load))},
