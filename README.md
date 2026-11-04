@@ -89,6 +89,8 @@ Stream width and speed each follow the square root of current over a fixed grain
 
 Parts with memory are companion models. `capacitor` holds `v0`, draws as a glass tank whose footprint is `box` and whose water level is its voltage. `inductor` holds `i0` and draws as a flywheel. Add `j(e,h)` for an injected current and `commit(e,v,I)` to store state. `solve(d)` reads the circuit at this instant; `timeStep(d,run,hmax)` advances it by `run` seconds of model time with backward Euler. `diode` is an ideal `Vf` plus `Ron`, and `flip(e,v,I)` lets any part change state until the solution agrees with it.
 
+`diode` takes `Vf`, `Ron`, optional `Vz` (breakdown), `dead` (burnt open) and `col`/`k` (LED light). `bjt` takes `base`, the edge whose flow sets it, with `hFE`, `Vsat`, `Rsat`, `Imax`. `mosfet` takes `ctl`, the node whose height sets it, with `Vth`, `k`, `Imax`. Both draw a gate blade and a dashed control line. `stray` is a weak source (`G`, `V`) standing in for a floating gate.
+
 A description with `live: true` runs on its own clock: heights follow the model without the spring, and `vmax` may change, in which case the scale eases and the back walls relabel. `clock: {t, scale}` prints the time and how much it is slowed; `trace: {label, pts, tMax, yMax, guides, ticks, side}` plots a run. A widget with time adds `running(s)` and `quantum(s)`; under reduced motion the engine calls `tick` with one quantum every 650 ms.
 
 Under reduced motion nothing loops: the picture settles at once, with static grains and arrowheads standing in for flow.
