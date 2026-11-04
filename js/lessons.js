@@ -9,7 +9,7 @@ const BC=window.BC, {$,$$,esc,S,css,clamp,fmt}=BC, {txt}=BC.draw;
 /* ---------- circuit description ----------
    {gnd:"g", vmax:18, iref:.06, pref?:W, rspan?:[lo,hi], nodes:{id:{at:[u,v], flat:[u,v]?, pad?, tag?, gauge?, was?}}, edges:[{id,t,a,b,...}], walk?:{path,t}}
    at is the plan position; flat overrides it in the schematic. An edge may add via:[[u,v,fu?,fv?]...], label (printed on the floor), lab:[du,dv], labf:[dx,dy], tag (floats above its b node), tagOff:[dx,dy], ghost (not connected yet: a dashed outline on the floor that rises when it connects).
-   Height is node voltage on one scale, vmax = the full height of the frame. Add a part by adding one entry to TYPES: g(e) is its conductance (0 = open), solid(c) adds its blocks to the landscape, symbol(c) paints the schematic.
+   Height is node voltage on one scale, vmax = the full height of the frame; a negative vmin opens room below the floor, which turns to glass. Add a part by adding one entry to TYPES: g(e) is its conductance (0 = open), solid(c) adds its blocks to the landscape, symbol(c) paints the schematic.
    Parts with memory are companion models: g(e,h) and j(e,h) give a conductance and an injected current for a time step h. A solve with no step reads the circuit at this instant, so a capacitor holds its level (e.v0) and an inductor holds its current (e.i0). timeStep advances them; commit(e,v,I) stores the new state. flip(e,v,I) lets a part change state until the solution agrees with it. */
 const WIRE_G=1e5;   /* 10 µΩ: wires drop next to nothing, and their current stays known */
 const HOLD_H=1e-9;   /* the step of an instantaneous solve */
@@ -167,13 +167,14 @@ function symFuse(c){
   g.save(); g.translate((a[0]+b[0])/2,(a[1]+b[1])/2); g.rotate(Math.atan2(dy,dx)); const hw=Math.hypot(dx,dy)*.34; g.lineWidth=1.5; g.fillStyle=P.bgS; g.beginPath(); g.rect(-hw,-5,hw*2,10); g.fill(); g.stroke(); g.restore();
 }
 function symSource(c){
-  const {g,p}=c, a=p[0], b=p[p.length-1], x=(a[0]+b[0])/2, y=(a[1]+b[1])/2, P=PAL;
+  const {g,p}=c, a=p[0], b=p[p.length-1], x=(a[0]+b[0])/2, y=(a[1]+b[1])/2, P=PAL, r=c.e.V<0?-1:1;
   g.strokeStyle=P.inkS; g.lineWidth=2.5; g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(x,y+6); g.moveTo(x,y-6); g.lineTo(b[0],b[1]); g.stroke();
-  g.fillStyle=P.bgS; g.fillRect(x-20,y-5,40,10); g.lineWidth=3; g.beginPath(); g.moveTo(x-16,y-6); g.lineTo(x+16,y-6); g.stroke(); g.lineWidth=5; g.beginPath(); g.moveTo(x-8,y+6); g.lineTo(x+8,y+6); g.stroke();
+  g.fillStyle=P.bgS; g.fillRect(x-20,y-5,40,10); g.lineWidth=3; g.beginPath(); g.moveTo(x-16,y-6*r); g.lineTo(x+16,y-6*r); g.stroke(); g.lineWidth=5; g.beginPath(); g.moveTo(x-8,y+6*r); g.lineTo(x+8,y+6*r); g.stroke();
 }
 
 /* ---------- Terrain: the live picture ---------- */
 let viewPref="height";   /* survives step and page changes */
+const BELOW=.42, GLASS=.45;   /* below-floor circuits: the floor's share of the frame, and how solid the floor stays */
 function Terrain(stage){
   const cv=document.createElement("canvas"); cv.className="lsCv"; cv.setAttribute("role","img"); stage.appendChild(cv);
   const shadowCv=document.createElement("canvas"), floorCv=document.createElement("canvas"), wallCv=document.createElement("canvas");
@@ -184,10 +185,13 @@ function Terrain(stage){
   function fit(W,H){
     const D=T.desc; let U=0,V=0; Object.values(D.nodes).forEach(n=>{ U=Math.max(U,n.at[0]); V=Math.max(V,n.at[1]); });
     const E=.18, k=.3, c=.866, pad=6, span=U+V+2*E, slab=clamp(H*.022,5,13), room=34;
-    const sc=Math.min((W-2*pad)/((U+V+4*E)*c),(H*.5)/(span*k));
+    let sc=Math.min((W-2*pad)/((U+V+4*E)*c),(H*.5)/(span*k));
     /* the frame's scale eases when a circuit asks for a new one; nothing but heights depends on it */
     const vm=T.vm||D.vmax||18; let oy=H-pad-slab-(U+V+2*E)*sc*k, hs=(oy-room-pad)/vm; const cap=sc*.105*18/vm;
     if(hs>cap){ oy-=(hs-cap)*vm*.42; hs=cap; }
+    /* room below the floor: the back walls and the far end hang lowest, so the slab shrinks and lifts to clear them */
+    const drop=-(D.vmin||0);
+    if(drop>0){ sc=Math.min(sc,(H*BELOW)/(span*k)); const bot=H-pad-slab, top=room+pad, hang=Math.max(U,V)*sc*k, front=span*sc*k; hs=Math.min((bot-hang-top)/(vm+drop),cap); oy=Math.min(bot-front,bot-hang-drop*hs); oy-=Math.max(0,(oy-vm*hs-top)*.42); }
     geo={W,H,U,V,E,k,c,sc,oy,hs,slab,ox:W/2-(U-V)*sc*c/2,flatM:[Math.max(44,W*.11),60,Math.max(30,W*.08),40]};
   }
   const iso=(u,v,z)=>[geo.ox+(u-v)*geo.sc*geo.c, geo.oy+(u+v)*geo.sc*geo.k-z*geo.hs];
@@ -201,7 +205,7 @@ function Terrain(stage){
     desc.edges.forEach(e=>{ if(e.t==="switch"){ const was=T.prev[e.id]; if(was===false&&e.closed&&!BC.reduced) T.rings.push({a:e.a,b:e.b,t:0,dur:.45,r:.34}); T.prev[e.id]=!!e.closed; } });
     return T.sol; };
   const swing0=e=>{ const P=TYPES[e.t]; return P.gate?1-P.gate(e,T.sol.I[e.id]||0):e.closed?0:1; };
-  const settle=()=>{ const D=T.desc; T.vm=D.vmax||18; for(const k in T.sol.v){ T.zs[k]=D.clip?Math.max(0,T.sol.v[k]):T.sol.v[k]; T.zv[k]=0; } for(const e of D.edges){ T.heat[e.id]=heatTarget(e); T.flow[e.id]=Math.abs(T.sol.I[e.id]||0); T.pres[e.id]=e.ghost?0:1; T.swing[e.id]=swing0(e); } };
+  const settle=()=>{ const D=T.desc; T.vm=D.vmax||18; for(const k in T.sol.v){ T.zs[k]=T.sol.v[k]; T.zv[k]=0; } for(const e of D.edges){ T.heat[e.id]=heatTarget(e); T.flow[e.id]=Math.abs(T.sol.I[e.id]||0); T.pres[e.id]=e.ghost?0:1; T.swing[e.id]=swing0(e); } };
   const heatTarget=e=>{ if(e.open||e.ghost||e.dead) return 0; const I=T.sol.I[e.id]; if(e.t==="resistor") return I*I*e.R/(e.rating||T.desc.pref||2); if(TYPES[e.t].hot){ const v=T.sol.v; return Math.abs(I*(v[e.a]-v[e.b]))/(e.rating||T.desc.pref||2); } return 0; };
   /* everything comes up out of the floor when the picture first appears */
   T.rise=()=>{ if(!BC.reduced) T.pres={}; };
@@ -297,8 +301,10 @@ function Terrain(stage){
   }
   /* the battery's face: one notch per volt, chevrons climbing as fast as the current */
   function towerMarks(g,e,n,s,z){
-    const P=PAL, hs=geo.hs, u=n[0]+s, H=z*hs; if(H<3) return;
+    const P=PAL, hs=geo.hs, u=n[0]+s, H=z*hs; if(Math.abs(H)<3) return;
     if(e.tag){ const q=iso(n[0],n[1],z), skew=geo.k/geo.c, size=clamp(geo.sc*s*.62,12,30); g.save(); g.translate(q[0],q[1]); g.transform(1,skew,-1,skew,0,0); g.font=`700 ${size}px ${FONT.display}`; g.textAlign="center"; g.textBaseline="middle"; g.fillStyle=rgb(mix(P.towT,P.bg,.9)); g.fillText(e.tag,0,0); g.restore(); g.textBaseline="alphabetic"; }
+    /* below the floor: notches on the shaft's back wall */
+    if(z<0){ const vB=n[1]-s; g.lineWidth=1; g.strokeStyle=rgb(P.towE,.55); g.beginPath(); for(let k=-1;k>z+.02;k--){ const a=iso(n[0]-s,vB,k), b=iso(n[0]+s,vB,k); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); } g.stroke(); return; }
     const fx=(v,zz)=>iso(u,v,zz);
     /* notches on the left face */
     const uL=n[0]-s, vF=n[1]+s; g.lineWidth=1; g.strokeStyle=rgb(P.towE,.55); g.beginPath();
@@ -327,6 +333,7 @@ function Terrain(stage){
     else if(b.style==="ramp"){ const L=Math.hypot(b.B.u-b.A.u,b.B.v-b.A.v)*geo.sc||1, tilt=Math.min(1,Math.abs(b.A.z-b.B.z)*geo.hs/L*1.5); top=mix(P.rampT,P.rampV,tilt*.75); u=P.rampU; v=P.rampV; }
     else if(b.style==="water"){ const f=clamp(b.A.z*geo.hs/6,0,1); top=mix(P.floor,mix(P.accent,[255,255,255],.28),f); u=P.accent; v=mix(P.accent,P.shadow,.25); edge=P.accent; }
     else { top=P.top; u=P.u; v=P.v; }
+    if(b.under) top=mix(top,P.shadow,PAL.dark?.3:.22);
     if(b.char){ top=mix(top,P.char,.45); u=mix(u,P.char,.55); v=mix(v,P.char,.55); }
     if(b.heat>.01){ const i=b.heat, wall=Math.min(i*1.15,i>1?i:1); top=glow(top,Math.min(i*.62,i>1?i:1)); u=glow(u,wall); v=glow(v,wall); }
     return {top,u,v,edge};
@@ -336,19 +343,32 @@ function Terrain(stage){
     const tu=du/L, tv=dv/L, nu=-tv*hw, nv=tu*hw, w=1-M, C=colours(b), base=b.base*1;
     const a1=corner(A,nu*w,nv*w,A.z), b1=corner(B,nu*w,nv*w,B.z), b2=corner(B,-nu*w,-nv*w,B.z), a2=corner(A,-nu*w,-nv*w,A.z);
     const fa1=corner(A,nu*w,nv*w,base), fb1=corner(B,nu*w,nv*w,base), fb2=corner(B,-nu*w,-nv*w,base), fa2=corner(A,-nu*w,-nv*w,base);
-    const wall=(p,q,fq,fp,ox,oy)=>{ if(ox+oy<1e-3) return; const col=oy>=ox?C.v:C.u, ymin=Math.min(p[1],q[1]), ymax=Math.max(fp[1],fq[1]); if(ymax-ymin<.4) return;
+    const wall=(p,q,fq,fp,ox,oy)=>{ if(b.under){ if(ox+oy>-1e-3) return; const y0=Math.min(fp[1],fq[1]), y1=Math.max(p[1],q[1]); if(y1-y0<.4) return; const col=Math.abs(oy)>=Math.abs(ox)?C.v:C.u, gr=g.createLinearGradient(0,y0,0,y1); gr.addColorStop(0,rgb(col,.15)); gr.addColorStop(1,rgb(mix(col,PAL.shadow,PAL.dark?.3:.15))); poly4(g,p,q,fq,fp); g.fillStyle=gr; g.fill(); return; } if(ox+oy<1e-3) return; const col=oy>=ox?C.v:C.u, ymin=Math.min(p[1],q[1]), ymax=Math.max(fp[1],fq[1]); if(ymax-ymin<.4) return;
       poly4(g,p,q,fq,fp); if(ymax-ymin>5){ const gr=g.createLinearGradient(0,ymin,0,ymax); gr.addColorStop(0,rgb(col)); gr.addColorStop(1,rgb(mix(col,PAL.shadow,PAL.dark?.45:.28))); g.fillStyle=gr; g.strokeStyle=gr; } else { g.fillStyle=rgb(col); g.strokeStyle=rgb(col); } g.lineWidth=.6; g.fill(); g.stroke(); };
     wall(a1,b1,fb1,fa1,nu,nv); wall(b2,a2,fa2,fb2,-nu,-nv); wall(b1,b2,fb2,fb1,tu,tv); wall(a2,a1,fa1,fa2,-tu,-tv);
     poly4(g,a1,b1,b2,a2); g.fillStyle=rgb(C.top); g.fill(); g.strokeStyle=rgb(C.top); g.lineWidth=.6; g.stroke(); g.strokeStyle=rgb(C.edge,PAL.dark?.5:.75); g.lineWidth=1; g.beginPath(); g.moveTo(a1[0],a1[1]); g.lineTo(b1[0],b1[1]); g.moveTo(b2[0],b2[1]); g.lineTo(a2[0],a2[1]); if(b.style==="tower"||b.caps){ g.moveTo(b1[0],b1[1]); g.lineTo(b2[0],b2[1]); g.moveTo(a2[0],a2[1]); g.lineTo(a1[0],a1[1]); } g.stroke();
     if(b.ribs&&w>.2){ const step=.085, n=Math.floor(L/step); g.strokeStyle=b.heat>.5?rgb(PAL.hot,.35):rgb(PAL.rib,.75); g.lineWidth=1; g.beginPath(); for(let i=1;i<n;i++){ const t=i/n, q=lerpP(A,B,t), p=corner(q,nu*w*.86,nv*w*.86,q.z), r=corner(q,-nu*w*.86,-nv*w*.86,q.z); g.moveTo(p[0],p[1]); g.lineTo(r[0],r[1]); } g.stroke(); }
     if(b.after&&M<.6) b.after(g);
   }
+  /* below the floor a box is a shaft: its surface at the bottom, its back walls rising to an opening in the glass. A ramp through the floor splits in two where it crosses. */
+  const sunkZ=(lo,hi)=>lo<-1e-3&&hi<=1e-3;
+  function splitAtFloor(){
+    const out=[]; boxes.forEach(b=>{ const lo=Math.min(b.A.z,b.B.z), hi=Math.max(b.A.z,b.B.z);
+      if(lo<-1e-3&&hi>1e-3){ const X={...lerpP(b.A,b.B,b.A.z/(b.A.z-b.B.z)),z:0}, midLow=(b.A.z+b.B.z)<0, aLow=b.A.z<0, p=mkBox(b.id+"~a",b.A,X,{...b,after:midLow===aLow?b.after:null}), q=mkBox(b.id+"~b",X,b.B,{...b,after:midLow===aLow?null:b.after}); p.under=aLow; q.under=!aLow; out.push(p,q); }
+      else { b.under=sunkZ(lo,hi); out.push(b); } });
+    boxes=out;
+  }
+  function drawOpenings(g){
+    const a=(1-M)*.7; if(a<=0) return; g.save(); g.globalAlpha=a; g.lineWidth=1; g.strokeStyle=rgb(PAL.edge);
+    boxes.forEach(b=>{ if(!b.under) return; const {A,B,hw}=b, du=B.u-A.u, dv=B.v-A.v, L=Math.hypot(du,dv); if(L<1e-6) return; const nu=-dv/L*hw, nv=du/L*hw, q=[iso(A.u+nu,A.v+nv,0),iso(B.u+nu,B.v+nv,0),iso(B.u-nu,B.v-nv,0),iso(A.u-nu,A.v-nv,0)]; poly4(g,q[0],q[1],q[2],q[3]); g.stroke(); });
+    g.restore();
+  }
   /* soft shadows: drawn small and scaled up, which blurs them for free. Light comes from behind, so shadows fall toward the viewer and tie each height to the floor. */
   function drawShadows(g,W,H){
     if(M>=1) return; const f=3.2, sw=Math.ceil(W/f), sh=Math.ceil(H/f); if(shadowCv.width!==sw||shadowCv.height!==sh){ shadowCv.width=sw; shadowCv.height=sh; }
     const s=shadowCv.getContext("2d"); s.setTransform(1,0,0,1,0,0); s.clearRect(0,0,sw,sh); s.setTransform(1/f,0,0,1/f,0,0); s.fillStyle="#000";
     const vm=T.vm||18, off=(z)=>Math.max(0,z)/vm*.34;
-    boxes.forEach(b=>{ const {A,B,hw}=b, du=B.u-A.u, dv=B.v-A.v, L=Math.hypot(du,dv); if(L<1e-6) return; const nu=-dv/L*hw, nv=du/L*hw, oA=off(A.z), oB=off(B.z);
+    boxes.forEach(b=>{ if(b.under) return; const {A,B,hw}=b, du=B.u-A.u, dv=B.v-A.v, L=Math.hypot(du,dv); if(L<1e-6) return; const nu=-dv/L*hw, nv=du/L*hw, oA=off(A.z), oB=off(B.z);
       const f0=(q,x,y)=>iso(q.u+x,q.v+y,0), s0=(q,x,y,o)=>iso(q.u+x+o,q.v+y+o,0), g1=[f0(A,nu,nv),f0(B,nu,nv),f0(B,-nu,-nv),f0(A,-nu,-nv)], g2=[s0(A,nu,nv,oA),s0(B,nu,nv,oB),s0(B,-nu,-nv,oB),s0(A,-nu,-nv,oA)];
       s.beginPath(); g1.forEach((p,i)=>i?s.lineTo(p[0],p[1]):s.moveTo(p[0],p[1])); s.closePath(); s.fill();
       s.beginPath(); g2.forEach((p,i)=>i?s.lineTo(p[0],p[1]):s.moveTo(p[0],p[1])); s.closePath(); s.fill();
@@ -358,11 +378,11 @@ function Terrain(stage){
   const slabCorners=()=>{ const {U,V,E}=geo; return [iso(-E,-E,0),iso(U+E,-E,0),iso(U+E,V+E,0),iso(-E,V+E,0)]; };
   const slabPath=g=>{ const q=slabCorners(); g.beginPath(); q.forEach((a,i)=>i?g.lineTo(a[0],a[1]):g.moveTo(a[0],a[1])); g.closePath(); };
   /* the base is a slab on the page: cached, since it only changes with size and theme */
-  function drawFloor(g,W,H,dpr){
+  function drawFloor(g,W,H,dpr,under){
     if(M>=1) return; const key=[W,H,dpr,geo.U,geo.V,geo.sc,geo.oy,PAL.key].join();
     if(key!==floorKey){ floorKey=key; floorCv.width=Math.round(W*dpr); floorCv.height=Math.round(H*dpr); const f=floorCv.getContext("2d"); f.setTransform(dpr,0,0,dpr,0,0); const P=PAL,{U,V,E,slab}=geo, q=slabCorners();
-      /* contact shadow under the slab */
-      f.save(); f.filter="blur(10px)"; f.fillStyle=rgb(P.shadow,P.dark?.7:.22); f.beginPath(); f.moveTo(q[3][0]+6,q[3][1]+slab+2); f.lineTo(q[2][0],q[2][1]+slab+8); f.lineTo(q[1][0]-6,q[1][1]+slab+2); f.lineTo(q[2][0],q[2][1]); f.closePath(); f.fill(); f.restore();
+      /* contact shadow under the slab; glass casts none */
+      if(!under){ f.save(); f.filter="blur(10px)"; f.fillStyle=rgb(P.shadow,P.dark?.7:.22); f.beginPath(); f.moveTo(q[3][0]+6,q[3][1]+slab+2); f.lineTo(q[2][0],q[2][1]+slab+8); f.lineTo(q[1][0]-6,q[1][1]+slab+2); f.lineTo(q[2][0],q[2][1]); f.closePath(); f.fill(); f.restore(); }
       f.fillStyle=rgb(P.slabV); f.beginPath(); f.moveTo(q[3][0],q[3][1]); f.lineTo(q[2][0],q[2][1]); f.lineTo(q[2][0],q[2][1]+slab); f.lineTo(q[3][0],q[3][1]+slab); f.closePath(); f.fill();
       f.fillStyle=rgb(P.slabU); f.beginPath(); f.moveTo(q[2][0],q[2][1]); f.lineTo(q[1][0],q[1][1]); f.lineTo(q[1][0],q[1][1]+slab); f.lineTo(q[2][0],q[2][1]+slab); f.closePath(); f.fill();
       const gr=f.createLinearGradient(q[0][0],q[0][1],q[2][0],q[2][1]); gr.addColorStop(0,rgb(P.floor2)); gr.addColorStop(1,rgb(P.floor)); f.fillStyle=gr; slabPath(f); f.fill();
@@ -373,14 +393,19 @@ function Terrain(stage){
       const z=iso(U+E-.18,V+E-.06,0); f.font=`500 ${labelPx(11)}px ${FONT.mono}`; f.fillStyle=rgb(P.muted); f.textAlign="right"; f.fillText("0 V",z[0]+2,z[1]+2);
     }
     /* the room's back walls carry the height scale, so the empty air above a low ledge still measures something. Cached apart from the floor: they alone follow the scale. */
-    const vm=T.vm||18, wk=[key,vm.toFixed(1)].join();
+    const vm=T.vm||18, vlo=T.desc.vmin||0, wk=[key,vm.toFixed(1),vlo].join();
     if(wk!==wallKey){ wallKey=wk; wallCv.width=Math.round(W*dpr); wallCv.height=Math.round(H*dpr); const f=wallCv.getContext("2d"), P=PAL, q=slabCorners(); f.setTransform(dpr,0,0,dpr,0,0);
       const wallH=vm*geo.hs, wall=(a,b)=>{ const gr=f.createLinearGradient(0,a[1]-wallH,0,a[1]); gr.addColorStop(0,rgb(P.floor2,0)); gr.addColorStop(1,rgb(P.floor2,P.dark?.7:.9)); f.fillStyle=gr; f.beginPath(); f.moveTo(a[0],a[1]); f.lineTo(b[0],b[1]); f.lineTo(b[0],b[1]-wallH); f.lineTo(a[0],a[1]-wallH); f.closePath(); f.fill(); };
       wall(q[0],q[1]); wall(q[0],q[3]);
       const stepV=vm<=10?1:vm<=40?5:vm<=120?20:vm<=400?50:100; f.lineWidth=1; f.font=`500 ${labelPx(11)}px ${FONT.mono}`; f.textAlign="right";
       const top=vm>40?vm*2.2:vm;   /* past the back corner a tall spike still has lines to read against */
-      for(let z=stepV;z<top;z+=stepV){ const y=z*geo.hs; f.strokeStyle=rgb(P.grid,P.dark?.9:1); f.beginPath(); f.moveTo(q[3][0],q[3][1]-y); f.lineTo(q[0][0],q[0][1]-y); f.lineTo(q[1][0],q[1][1]-y); f.stroke(); f.fillStyle=rgb(P.muted,.8); f.fillText(z+" V",q[1][0]-3,q[1][1]-y-5); } }
-    g.save(); g.globalAlpha=1-M; g.setTransform(1,0,0,1,0,0); g.drawImage(wallCv,0,0); g.drawImage(floorCv,0,0); g.restore();
+      for(let z=stepV;z<top;z+=stepV){ const y=z*geo.hs; f.strokeStyle=rgb(P.grid,P.dark?.9:1); f.beginPath(); f.moveTo(q[3][0],q[3][1]-y); f.lineTo(q[0][0],q[0][1]-y); f.lineTo(q[1][0],q[1][1]-y); f.stroke(); f.fillStyle=rgb(P.muted,.8); f.fillText(z+" V",q[1][0]-3,q[1][1]-y-5); }
+      /* the same walls carry on below the floor, darker and fading out */
+      if(vlo<0){ const deep=-vlo*geo.hs, base=mix(P.floor2,P.shadow,P.dark?.25:.12), sunk=(a,b)=>{ const gr=f.createLinearGradient(0,Math.min(a[1],b[1]),0,Math.max(a[1],b[1])+deep); gr.addColorStop(0,rgb(base,P.dark?.7:.9)); gr.addColorStop(1,rgb(base,0)); f.fillStyle=gr; f.beginPath(); f.moveTo(a[0],a[1]); f.lineTo(b[0],b[1]); f.lineTo(b[0],b[1]+deep); f.lineTo(a[0],a[1]+deep); f.closePath(); f.fill(); };
+        sunk(q[0],q[1]); sunk(q[0],q[3]);
+        for(let z=stepV;z<=-vlo;z+=stepV){ const y=z*geo.hs; f.strokeStyle=rgb(P.grid,P.dark?.9:1); f.beginPath(); f.moveTo(q[3][0],q[3][1]+y); f.lineTo(q[0][0],q[0][1]+y); f.lineTo(q[1][0],q[1][1]+y); f.stroke(); f.fillStyle=rgb(P.muted,.8); f.fillText("−"+z+" V",q[1][0]-3,q[1][1]+y-5); } } }
+    g.save(); g.globalAlpha=1-M; g.setTransform(1,0,0,1,0,0); g.drawImage(wallCv,0,0); if(!under) g.drawImage(floorCv,0,0); g.restore();
+    if(under){ under(); g.save(); g.globalAlpha=(1-M)*GLASS; g.setTransform(1,0,0,1,0,0); g.drawImage(floorCv,0,0); g.restore(); }
   }
   /* power lights the floor around a hot slope */
   function drawGlows(g,items){
@@ -547,7 +572,7 @@ function Terrain(stage){
     D.edges.forEach(e=>{ if(e.t==="inductor") T.spin[e.id]=(T.spin[e.id]||0)-(T.sol.I[e.id]||0)/(D.iref||.05)*7*dt; });
     /* heights ride a damped spring: a ledge dropping lands with a little weight. A live circuit has its own time, so its heights only smooth over a jump. */
     const K=110, C=2*.74*Math.sqrt(K);
-    if(D.live){ const a=1-Math.exp(-dt*26); for(const k in T.sol.v){ const tg=D.clip?Math.max(0,T.sol.v[k]):T.sol.v[k], z=T.zs[k]===undefined?tg:T.zs[k]; T.zs[k]=z+(tg-z)*a; T.zv[k]=0; } }
+    if(D.live){ const a=1-Math.exp(-dt*26); for(const k in T.sol.v){ const tg=T.sol.v[k], z=T.zs[k]===undefined?tg:T.zs[k]; T.zs[k]=z+(tg-z)*a; T.zv[k]=0; } }
     else for(const k in T.sol.v){ const tg=T.sol.v[k], z=T.zs[k]===undefined?tg:T.zs[k], v=T.zv[k]||0, nv=v+(K*(tg-z)-C*v)*dt, nz=z+nv*dt; T.zs[k]=Math.abs(nz-tg)<1e-4&&Math.abs(nv)<1e-3?tg:nz; T.zv[k]=nv; }
     D.edges.forEach(e=>{ const h=T.heat[e.id]||0, ht=heatTarget(e); T.heat[e.id]=h+(ht-h)*Math.min(1,dt*(ht>h?2.8:4.5));
       const Ia=Math.abs(T.sol.I[e.id]||0), f=T.flow[e.id]===undefined?0:T.flow[e.id]; T.flow[e.id]=D.live?Ia:Ia<1e-9&&f<(D.iref||.05)*.002?0:f+(Ia-f)*Math.min(1,dt*7);
@@ -567,20 +592,23 @@ function Terrain(stage){
     items.forEach(it=>{ it.c=context(it.e,it.info,g); if(it.c.pres>.01) TYPES[it.e.t].solid(it.c); });
     /* landings */
     Object.keys(layout.pad).forEach(id=>{ if(layout.tower[id]) return; const n=D.nodes[id], s=layout.pad[id], touching=D.edges.filter(e=>(e.a===id||e.b===id)), pr=touching.reduce((a,e)=>Math.max(a,T.pres[e.id]===undefined?1:T.pres[e.id]),0); if(pr<.01) return; const z=(T.zs[id]||0)*pr, F=nodeF(n), mk=u=>({u,v:n.at[1],z,fu:F[0],fv:F[1]}); boxes.push(mkBox("n:"+id,mk(n.at[0]-s),mk(n.at[0]+s),{hw:s})); });
+    const glass=(D.vmin||0)<0;
+    if(glass){ splitAtFloor(); items.forEach(({info})=>{ const zs=info.poly.map(q=>q.z); info.sunk=M<.01&&sunkZ(Math.min(...zs),Math.max(...zs)); }); }
     g.save();
     if(T.shake>0&&!BC.reduced) g.translate(Math.sin(T.clock*71)*7*T.shake*T.shake,Math.cos(T.clock*93)*5*T.shake*T.shake);
     moveStreams(items,dt);
-    drawFloor(g,W,H,dpr);
+    drawFloor(g,W,H,dpr,glass?()=>{ const a=1-clamp((M-.55)/.4,0,1); if(a>0){ g.globalAlpha=a; orderBoxes().forEach(i=>{ if(boxes[i].under) drawBox(g,boxes[i]); }); g.globalAlpha=1; } items.forEach(({e,info})=>{ if(info.sunk&&!e.inner) streamOf(g,e,info); }); }:null);
+    if(glass) drawOpenings(g);
     drawShadows(g,W,H);
     drawGlows(g,items);
     drawPrint(g,items);
     drawGhosts(g,items);
     solidA=1-clamp((M-.55)/.4,0,1);
-    if(solidA>0){ g.globalAlpha=solidA; orderBoxes().forEach(i=>drawBox(g,boxes[i])); g.globalAlpha=1; }
+    if(solidA>0){ g.globalAlpha=solidA; orderBoxes().forEach(i=>{ if(!boxes[i].under) drawBox(g,boxes[i]); }); g.globalAlpha=1; }
     drawGapMarks(g,items);
     drawTies(g,items);
     if(M>.3){ g.globalAlpha=clamp((M-.3)/.45,0,1); items.forEach(it=>{ it.c.p=it.info.full.map(q=>T.project(q,M)); it.c.line=()=>{ g.strokeStyle=PAL.inkS; g.lineWidth=2.5; g.lineJoin="round"; g.beginPath(); it.c.p.forEach((q,i)=>i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1])); g.stroke(); }; if(!it.e.ghost) TYPES[it.e.t].symbol(it.c); }); g.globalAlpha=1; }
-    items.forEach(({e,info})=>{ if(!e.inner) streamOf(g,e,info); });
+    items.forEach(({e,info})=>{ if(!e.inner&&!info.sunk) streamOf(g,e,info); });
     drawLights(g,items);
     drawNodeMarks(g);
     drawLeads(g);
@@ -601,7 +629,7 @@ function Terrain(stage){
 /* ---------- number formats ---------- */
 const amps=i=>Math.abs(i)<1e-7?"0 A":fmt(Math.abs(i),"A");
 const watts=p=>p<5e-4?"0 W":p<100?+p.toPrecision(3)+" W":Math.round(p)+" W";
-const volts=v=>fmt(v,"V");
+const volts=v=>fmt(v,"V").replace("-","−");
 const RATING={.125:"⅛ W",.25:"¼ W",.5:"½ W",1:"1 W",2:"2 W"};
 const round3=x=>+x.toPrecision(3);
 
@@ -781,7 +809,7 @@ const timed={
 };
 
 /* ---------- modules 6-8: a one-way ledge, a gate on the slope, and light ----------
-   Stated models. Diode: a fixed step Vf (silicon 0.7 V, Schottky 0.32 V, LED by colour) then 0.01 Ω; a Zener also holds 5.1 V in reverse. Reversing the battery is drawn as the diode facing the other way.
+   Stated models. Diode: a fixed step Vf (silicon 0.7 V, Schottky 0.32 V, LED by colour) then 0.01 Ω; a Zener also holds 5.1 V in reverse. A reversed battery is a negative supply, below the floor.
    BJT: Ic = 100 x Ib until the load limits it; fully open it keeps 0.2 V and 0.1 Ω. MOSFET: off below 2 V of gate height; Ids = 0.3 (Vgs - 2)² until the channel is wide open. Gate flow is zero. A floating gate is a stray source coupled in through 1 MΩ. */
 const DI={Vf:.7,Vsch:.32,Vz:5.1,Ron:.01,Rs:220}, DKIND={si:["Silicon",DI.Vf],sch:["Schottky",DI.Vsch]};
 const stepV=(o,a,b)=>volts(+Math.abs(o.v[a]-o.v[b]).toFixed(2));
@@ -789,28 +817,28 @@ function diodeCircuit(s){
   const zen=s.mode==="zen", dk=DKIND[s.kind];
   /* da, db are the diode's two ends in both layouts */
   const nodes={g:{at:[0,.8]},e:{at:[0,.8],flat:[0,.3]},n0:{at:[0,0]},ra:{at:[zen?.14:1,0]},db:{at:[zen?.9:.9,0]},da:{at:[zen?1.8:.2,0]},rb:{at:[1.82,0]},c1:{at:[2,0]},c2:{at:[2,.8]}};
-  const src={id:"src",t:"source",a:"g",b:"e",V:s.V,box:.15,tag:s.V.toFixed(s.V%1?1:0)+" V",tagOff:[0,-12],tagf:[-30,44]};
+  const src={id:"src",t:"source",a:"g",b:"e",V:s.V,box:.15,tag:(s.V<0?"−":"")+Math.abs(s.V).toFixed(s.V%1?1:0)+" V",tagOff:[0,-12],tagf:[-30,44]};
   const Rl=(R,lab)=>({id:"R",t:"resistor",a:"ra",b:zen?"db":"rb",R,rating:s.rate||2,label:fmt(R,"Ω"),lab:[0,.27],labf:[0,28]});
   let edges;
   if(zen) edges=[src,{id:"w0",t:"wire",a:"e",b:"n0"},{id:"w1",t:"wire",a:"n0",b:"ra"},Rl(s.R),
     {id:"D",t:"diode",a:"da",b:"db",Vf:DI.Vf,Vz:DI.Vz,Ron:DI.Ron,rating:.5,label:"Zener "+DI.Vz+" V",lab:[0,.27],labf:[0,-26]},
     {id:"w2",t:"wire",a:"da",b:"c1"},{id:"w3",t:"wire",a:"c1",b:"c2"},{id:"w4",t:"wire",a:"c2",b:"g"}];
   else edges=[src,{id:"w0",t:"wire",a:"e",b:"n0"},{id:"w1",t:"wire",a:"n0",b:"da"},
-    {id:"D",t:"diode",a:s.rev?"db":"da",b:s.rev?"da":"db",Vf:dk[1],Ron:DI.Ron,rating:.5,label:dk[0]+" "+dk[1]+" V",lab:[0,.27],labf:[0,-26]},
+    {id:"D",t:"diode",a:"da",b:"db",Vf:dk[1],Ron:DI.Ron,rating:.5,label:dk[0]+" "+dk[1]+" V",lab:[0,.27],labf:[0,-26]},
     {id:"w2",t:"wire",a:"db",b:"ra"},Rl(s.R),{id:"w3",t:"wire",a:"rb",b:"c1"},{id:"w4",t:"wire",a:"c1",b:"c2"},{id:"w5",t:"wire",a:"c2",b:"g"}];
-  return {gnd:"g",vmax:12,iref:.06,pref:s.rate||2,rspan:[10,2000],nodes,edges};
+  return {gnd:"g",vmax:12,vmin:-6,iref:.06,pref:s.rate||2,rspan:[10,2000],nodes,edges};
 }
 const diodeSolve=s=>solve(diodeCircuit(s));
 const diodes={
   circuit:diodeCircuit,
-  fresh:()=>({mode:"dio",V:0,R:100,kind:"si",rev:false,rate:2,Vgoal:null,Vrate:3}),
+  fresh:()=>({mode:"dio",V:0,R:100,kind:"si",rate:2,Vgoal:null,Vrate:3}),
   tick(s,sol,dt){ if(s.Vgoal!==null){ if(BC.reduced) s.V=s.Vgoal; else { const d=dt*s.Vrate; s.V=s.V<s.Vgoal?Math.min(s.Vgoal,s.V+d):Math.max(s.Vgoal,s.V-d); } if(s.V===s.Vgoal) s.Vgoal=null; } return null; },
   busy:s=>s.Vgoal!==null,
   ro:{ V:["Supply",s=>volts(+s.V.toFixed(1))], I:["Flow",(s,o)=>amps(o.I.D)], drop:["Diode drop",(s,o)=>stepV(o,"da","db")], rdrop:["Across R",(s,o)=>volts(+(Math.abs(o.I.R)*s.R).toFixed(2))],
     heat:["Diode heat",(s,o)=>watts(Math.abs(o.I.D)*Math.abs(o.v.da-o.v.db))], out:["Output",(s,o)=>volts(+o.v.db.toFixed(2))] },
   val:{I:(s,o)=>Math.abs(o.I.D)},
   fail:{},
-  alt:(s,o)=>s.mode==="zen"?`supply ${s.V} volts, Zener holds the output at ${volts(o.v.db)}, flow ${amps(o.I.D)}.`:`supply ${s.V} volts, ${DKIND[s.kind][0]} diode ${s.rev?"reversed":"forward"}, drop across it ${stepV(o,"da","db")}, flow ${amps(o.I.D)}.`
+  alt:(s,o)=>s.mode==="zen"?`supply ${s.V} volts, Zener holds the output at ${volts(o.v.db)}, flow ${amps(o.I.D)}.`:`supply ${+s.V.toFixed(1)} volts, ${DKIND[s.kind][0]} diode ${s.V<0?"reversed":"forward"}, drop across it ${stepV(o,"da","db")}, flow ${amps(o.I.D)}.`
 };
 
 const TR={V:9,Rl:30,hFE:100,Vbe:.7,Vsat:.2,Rsat:.1,Vth:2,k:.3,Rpd:1e4,Rstray:1e6};
@@ -896,7 +924,7 @@ const leds={
 };
 
 /* ---------- module 9: a rectifier, a tank and a regulator, in real model time ----------
-   Stated model. 50 Hz source, shown 50× slower so a cycle takes a second. Diode 0.7 V + 0.05 Ω; half-wave only. The regulator is an ideal 5 V linear part: it passes the load's flow from its input to its output, drops out below 0.5 V of headroom, and every volt it drops times that flow is heat in it. The picture cannot draw below the floor, so the source rests at 0 there; the plot keeps the true swing. */
+   Stated model. 50 Hz source, shown 50× slower so a cycle takes a second. Diode 0.7 V + 0.05 Ω; half-wave only. The regulator is an ideal 5 V linear part: it passes the load's flow from its input to its output, drops out below 0.5 V of headroom, and every volt it drops times that flow is heat in it. */
 const PW={f:50,slow:50,Vf:.7,Ron:.05,Vreg:5,Vdo:.5,Rdo:1,rate:1};
 TYPES.ldo={hot:1, g:e=>e.m==="drop"?1/e.Rdo:0, j:e=>e.m==="reg"?e.Iset:0,
   flip:(e,v)=>{ const m=v[e.a]-e.Vreg>=e.Vdo?"reg":"drop"; if(m===e.m) return false; e.m=m; return true; }, solid:solidResistor, symbol:symResistor};
@@ -914,7 +942,7 @@ function powerCircuit(s){
    {id:"w8",t:"wire",a:"rb",b:"lo"},{id:"R",t:"resistor",a:"lo",b:"lf",R:s.RL,rating:50,label:fmt(s.RL,"Ω"),lab:[-.27,0],labf:[-34,0]},
    {id:"w5",t:"wire",a:"f1",b:"g"},{id:"w6",t:"wire",a:"lf",b:"f1"}];
   if(s.tank) edges.push({id:"w3",t:"wire",a:"o",b:"tp"},{id:"C",t:"capacitor",a:"tp",b:"tb",C:s.C,v0:s.vc,box:tankBoxW(s.C),rim:Math.max(13,s.pk+1.4),capLabel:fmt(s.C,"F")},{id:"w4",t:"wire",a:"tb",b:"f1"});
-  return {gnd:"g",vmax:18,iref:.12,pref:2,rspan:[22,500],live:true,clip:true,nodes,edges,clock:{t:"t = "+secs(s.t),scale:`shown ${PW.slow}× slower`+(BC.reduced?", in steps":"")},trace:{label:s.reg?"Dashed: input":"Dashed: source",pts:s.tr,pts2:s.tr2,tMax:2/PW.f,yMax:32,guides:[{y:16,t:"0 V"}]}};
+  return {gnd:"g",vmax:18,vmin:-16,iref:.12,pref:2,rspan:[22,500],live:true,nodes,edges,clock:{t:"t = "+secs(s.t),scale:`shown ${PW.slow}× slower`+(BC.reduced?", in steps":"")},trace:s.tank?{label:s.reg?"Dashed: input":"Load height",pts:s.tr,pts2:s.reg?s.tr2:null,tMax:2/PW.f,yMax:18}:null};
 }
 /* advance by run seconds in steps of at most h; ripple window and averages ride along */
 function powerRun(s,run,h){
@@ -936,7 +964,7 @@ const power={
     if(!dt) return null;
     powerRun(s,dt/PW.slow,1/PW.f/400);
     if(s.t-s.tw>2/PW.f){ s.tr=[]; s.tr2=[]; s.tw=s.t; }
-    const o=s.sol, n=s.tr.length; if(o&&(!n||s.t-s.tw-s.tr[n-1][0]>=2/PW.f/200)){ s.tr.push([s.t-s.tw,o.v.lo+16]); s.tr2.push([s.t-s.tw,(s.reg?o.v.ra:o.v.e)+16]); }
+    const o=s.sol, n=s.tr.length; if(o&&(!n||s.t-s.tw-s.tr[n-1][0]>=2/PW.f/200)){ s.tr.push([s.t-s.tw,o.v.lo]); s.tr2.push([s.t-s.tw,o.v.ra]); }
     return null;
   },
   busy:()=>false,
@@ -1132,10 +1160,10 @@ BC.LESSONS={
     choices:[{t:"Doubles"},{t:"Stays about 0.7 V",ok:1},{t:"Halves"}],
     reveal:s=>{s.Vgoal=10;s.Vrate=2.5;}, settled:s=>s.Vgoal===null},
    {id:"reverse",kind:"predict",prompt:"Reverse the battery. The flow becomes...?",
-    insight:"The ledge faces the wrong way, so the whole height piles across the diode: a cliff nothing climbs.",
+    insight:"The tower sinks below the floor. All 5 V piles across the diode: a cliff nothing climbs.",
     setup:s=>{s.V=5;}, ro:["V","drop","I"], cols:3,
     choices:[{t:"Backwards"},{t:"None at all",ok:1},{t:"The same"}],
-    reveal:s=>{s.rev=true;}, settled:()=>true},
+    reveal:s=>{s.Vgoal=-5;s.Vrate=5;}, settled:s=>s.Vgoal===null},
    {id:"size",kind:"hit",prompt:"Set the flow to 20 mA. Drag R.",
     insight:"Only the height above the step reaches the resistor. About 415 Ω passes 20 mA at 9 V.",
     setup:s=>{s.V=9;s.R=2000;}, ro:["drop","I"], sliders:[{k:"R",label:"R",log:[100,2000],grip:{edge:"R"}}],
@@ -1284,7 +1312,7 @@ BC.LESSONS={
     setup:s=>{s.pk=12;}, ro:["src","out","flow"], sliders:[{k:"pk",label:"Swing",min:2,max:16,step:.5,fmt:s=>s.pk.toFixed(1)+" V peak",grip:{node:"e"}}],
     target:{of:"pk",to:9,tol:.01,show:volts}},
    {id:"diode",kind:"predict",prompt:"Put a diode in the line. What reaches the load?",
-    insight:"Below the floor the diode shuts, its ledge dead. Only upward swings pass, 0.7 V shorter.",
+    insight:"With the tower below the floor, the diode shuts and the load rests. Only upward swings pass.",
     setup:s=>{s.pk=12;}, ro:["src","out"], cols:2,
     choices:[{t:"Everything"},{t:"Only the top half",ok:1},{t:"Only the bottom half"},{t:"Nothing"}],
     reveal:s=>{s.diode=true;s.chg=s.t;}, settled:s=>s.t>=s.chg+.04},
