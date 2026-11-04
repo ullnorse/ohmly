@@ -26,6 +26,7 @@ function loopPt(r,s){const w=r.x1-r.x0,h=r.y1-r.y0,P=2*(w+h);let d=((s%1)+1)%1*P
 function smoke(list,x,y){if(BC.reduced) return; list.push({x:x+BC.rand(-6,6),y,vy:BC.rand(-30,-50),vx:BC.rand(-8,8),r:BC.rand(4,8),life:1.6});}
 function drawSmoke(g,list,dt){for(let i=list.length-1;i>=0;i--){const p=list[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.r+=6*dt;p.life-=dt*0.7;if(p.life<=0){list.splice(i,1);continue;}g.fillStyle=css("--muted");g.globalAlpha=p.life*0.35;g.beginPath();g.arc(p.x,p.y,p.r,0,7);g.fill();g.globalAlpha=1;}}
 
+BC.draw={line,txt,smoke,drawSmoke};   /* shared with lessons.js */
 const L=BC.LABS={};
 
 /* ================= CH2 ================= */

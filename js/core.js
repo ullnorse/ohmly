@@ -7,11 +7,12 @@ const KEY = "ohmly-v1";
 const isO=v=>!!v&&typeof v==="object"&&!Array.isArray(v), isN=v=>typeof v==="number"&&isFinite(v);
 const nn=v=>isN(v)&&v>=0?v:undefined, bn=v=>typeof v==="boolean"||isN(v)?v:undefined;
 const map=f=>v=>{ if(!isO(v)) return; const o={}; for(const k of Object.keys(v)){ const x=f(v[k]); if(x!==undefined) o[k]=x; } return o; };
-const FIX={done:map(bn), quiz:map(v=>map(bn)(v)), lastCh:v=>v===null||isN(v)?v:undefined, xp:nn, badges:map(nn), labs:map(bn), hi:map(nn), cards:map(nn),
+const lesson=v=>{ if(!isO(v)) return; const int=x=>Number.isInteger(x)&&x>=0?x:0; return {step:int(v.step),max:int(v.max),done:v.done?1:0,vals:map(nn)(v.vals)||{},pred:map(v=>typeof v==="boolean"?v:undefined)(v.pred)||{}}; };
+const FIX={done:map(bn), lessons:map(lesson), quiz:map(v=>map(bn)(v)), lastCh:v=>v===null||isN(v)?v:undefined, xp:nn, badges:map(nn), labs:map(bn), hi:map(nn), cards:map(nn),
   streak:v=>isO(v)?{last:typeof v.last==="string"?v.last:null,n:nn(v.n)||0}:undefined, sound:v=>typeof v==="boolean"?v:undefined, fried:nn, scoped:nn,
   theme:v=>["system","light","dark"].includes(v)?v:undefined, xpDone:map(bn), xpQ:map(bn), xpMax:map(nn), xpOnce:map(bn), xpCard:map(bn), probs:map(bn),
   pxmm:v=>isN(v)&&v>=2&&v<=9?v:undefined};   /* screen scale for the true-size lab, CSS px per mm; absent until calibrated */
-BC.defaults = ()=>({done:{}, quiz:{}, lastCh:null, xp:0, badges:{}, labs:{}, hi:{}, cards:{}, streak:{last:null,n:0}, sound:true, fried:0, scoped:0, xpDone:{}, xpQ:{}, xpMax:{}, xpOnce:{}, xpCard:{}, probs:{}});
+BC.defaults = ()=>({done:{}, quiz:{}, lastCh:null, xp:0, badges:{}, labs:{}, hi:{}, cards:{}, streak:{last:null,n:0}, sound:true, fried:0, scoped:0, xpDone:{}, xpQ:{}, xpMax:{}, xpOnce:{}, xpCard:{}, probs:{}, lessons:{}});
 /* type-check every field of untrusted state (storage or import) and merge the valid ones into the defaults */
 BC.sanitize = o=>{ const r=BC.defaults(); if(isO(o)) for(const k of Object.keys(FIX)){ const v=FIX[k](o[k]); if(v!==undefined) r[k]=v; } return r; };
 const S = BC.S = BC.defaults();
