@@ -79,7 +79,15 @@ Module pages have tabs, addressed as `#m-1/quiz`: Lesson, Notes (intro, key poin
 
 `keep(s, vals)` stores numbers for the end screen, whose `end.rows` light up each formula of the module with a value the learner produced. No formula appears before that screen. Progress is in `S.lessons[n]` (`step`, `max`, `done`, `vals`, `pred`); XP is paid once through `BC.once("lesson-<n>")`.
 
-The picture is driven by a circuit description: `{gnd, vmax, nodes: {id: {at: [u, v], flat?}}, edges: [{id, t, a, b, ...}]}`, solved by nodal analysis. Height is node voltage; edge types are in `TYPES` (`wire`, `resistor`, `switch`, `fuse`, `source`). A new part needs one `TYPES` entry: `g(e)` for its conductance and `draw(c)`.
+A step's `sliders` are `{k, label, min, max, step}` or `{k, label, log: [lo, hi]}`, with optional `fmt(s)` for the printed value and `grip` to drag the part in the picture: `{node}` lifts a node, `{edge, sign}` drags a resistor's slope, `{walk: 1}` moves the walk marker. `goal(s, solved)` also gets the solution.
+
+A widget is `{circuit(s), fresh(), tick(s, solved, dt), busy(s), ro, val, fail, alt(s, solved)}`. `tick` returns an event name when a part fails, `fail[event]` names the edge that bursts, and `alt` is the picture's text alternative. Read `vals` in `setup` to carry a learner's number between steps.
+
+The picture is driven by a circuit description: `{gnd, vmax, iref, pref?, rspan?, nodes: {id: {at: [u, v], flat?, pad?, tag?, gauge?, was?}}, edges: [{id, t, a, b, ...}], walk?}`, solved by nodal analysis. Height is node voltage on one scale per circuit (`vmax`), so a circuit's heights compare directly; set `vmax` once per widget and leave it. Plan coordinates are free, so any series or parallel layout works. An edge marked `ghost` draws but does not conduct until the lesson opens it.
+
+Stream width and speed each follow the square root of current over a fixed grain, so the charge a stream carries is proportional to current and adds up at a junction. Edge types are in `TYPES` (`wire`, `resistor`, `switch`, `fuse`, `source`). A new part needs one `TYPES` entry: `g(e)` for its conductance, `solid(c)` for its blocks and `symbol(c)` for the schematic.
+
+Under reduced motion nothing loops: the picture settles at once, with static grains and arrowheads standing in for flow.
 
 ## Teardown
 
