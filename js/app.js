@@ -121,30 +121,53 @@ function logbook(){
 }
 
 /* ---------- module ---------- */
-function moduleView(c){
-  const right=countRight(c), prev=M[c.n-2], next=M[c.n];
+/* tabs that have content, in order: [key, label, count] */
+const tabsOf=c=>[["lesson","Lesson",BC.lessonFor(c.n)?1:0,""],["notes","Notes",1,""],["labs","Labs",c.labs.length,c.labs.length],["practice","Practice",BC.probCount(c.n),BC.probCount(c.n)],["quiz","Quiz",c.quiz.length,c.quiz.length]].filter(t=>t[2]);
+const defaultTab=c=>BC.lessonFor(c.n)?"lesson":"notes";
+function moduleView(c,tab){
+  const right=countRight(c), prev=M[c.n-2], next=M[c.n], tabs=tabsOf(c), has=k=>tabs.some(t=>t[0]===k);
+  const panel=(k,body)=>has(k)?`<div class="tabPanel" role="tabpanel" id="panel-${k}" aria-labelledby="tab-${k}" tabindex="0"${k===tab?"":" hidden"}>${body}</div>`:"";
   return `
   <header class="modHead">
     <div class="modNo" aria-hidden="true">${pad(c.n)}</div>
-    <div><p class="partName">Module ${c.n} · Part ${c.part}, ${esc(partOf(c).name)}</p><h1 tabindex="-1">${esc(c.title)}</h1></div>
-    <div class="modMeta"><span>${c.labs.length} lab${c.labs.length===1?"":"s"}</span>${BC.probCount(c.n)?`<span>${BC.probCount(c.n)} problems</span>`:""}<span>${c.quiz.length} questions</span><span class="sp"></span>
-    <button class="btn ${S.done[c.n]?"":"primary"}" id="doneBtn" type="button" aria-pressed="${!!S.done[c.n]}">${S.done[c.n]?"✓ Finished":"Mark as finished"}</button></div>
+    <div class="modTi"><p class="partName">Module ${c.n} · Part ${c.part}, ${esc(partOf(c).name)}</p><h1 tabindex="-1">${esc(c.title)}</h1></div>
+    <button class="btn ${S.done[c.n]?"":"primary"}" id="doneBtn" type="button" aria-pressed="${!!S.done[c.n]}">${S.done[c.n]?"✓ Finished":"Mark as finished"}</button>
+    <div class="modTabs" role="tablist" aria-label="Module sections">${tabs.map(t=>`<a role="tab" id="tab-${t[0]}" href="#m-${c.n}/${t[0]}" aria-controls="panel-${t[0]}" aria-selected="${t[0]===tab}" tabindex="${t[0]===tab?0:-1}">${t[1]}${t[3]?`<small>${t[3]}</small>`:""}</a>`).join("")}</div>
   </header>
+  ${panel("lesson",`<div id="lessonHost"></div>`)}
+  ${panel("notes",`<div class="tabStack">
   <section class="prose"><p class="lede">${esc(c.big)}</p></section>
   <section><div class="sectionHead"><h2>Key points</h2></div><ul class="ideas">${c.ideas.map(i=>`<li><span>${esc(i)}</span></li>`).join("")}</ul></section>
   ${c.formulas.length?`<section><div class="sectionHead spread"><h2>Formulas</h2><a class="label" href="#game-cards">practice as flashcards</a></div><div class="formulas">${c.formulas.map(f=>`<div class="formula"><div class="eq">${esc(f[0])}</div><div class="what">${esc(f[1])}</div></div>`).join("")}</div></section>`:""}
   ${(c.ex||[]).length?`<section id="ex"><div class="sectionHead"><h2>Worked examples</h2></div>${c.ex.map((e,i)=>`<div class="ex"><p class="exq"><span class="label">Example ${c.n}.${i+1}</span>${esc(e.q)}</p><ol class="steps">${e.steps.map(t=>`<li>${esc(t)}</li>`).join("")}</ol><p class="exa"><span class="label">Answer</span>${esc(e.ans)}</p></div>`).join("")}</section>`:""}
-  ${c.labs.length?`<section><div class="sectionHead"><h2>Labs</h2></div>${c.labs.length>1?`<nav class="labNav" aria-label="Labs in this module">${c.labs.map((k,i)=>`<a href="#lab-${k}" class="labJump">Fig. ${c.n}.${i+1} ${esc(BC.LABS[k].title)}</a>`).join("")}</nav>`:""}<div id="labs"></div></section>`:""}
-  ${BC.probCount(c.n)?`<section id="probs"><div class="sectionHead spread"><h2>Practice problems</h2><span class="label">new numbers each time · 4.7k, 15m, 2.2u</span></div><div id="probList"></div></section>`:""}
-  <section id="quiz"><div class="sectionHead spread"><h2>Check</h2><span class="score" id="score" aria-live="polite">${right} of ${c.quiz.length} right</span></div>
-    ${c.quiz.map((q,i)=>quizItem(c,q,i)).join("")}
-    ${answeredIn(c)?`<button class="btn" id="resetQuiz" type="button">Clear answers</button>`:""}
-  </section>
   ${(c.deep||[]).length?`<section id="deep"><div class="sectionHead spread"><h2>Going deeper</h2><span class="label">optional · not needed to finish the module</span></div>${c.deep.map(d=>`<details class="dd"><summary>${esc(d.t)}</summary><div class="ddb">${deepBody(d.body)}</div></details>`).join("")}</section>`:""}
   ${c.tip?`<p class="tip"><b>Note</b>${esc(c.tip)}</p>`:""}
   ${c.reading?`<p class="reading">Further reading: <i>${esc(D.BOOK.title)}</i>, ${esc(D.BOOK.ed)}, ${esc(c.reading)}. Ohmly isn't affiliated with the book or its publisher.</p>`:""}
+  </div>`)}
+  ${panel("labs",`<section>${c.labs.length>1?`<nav class="labNav" aria-label="Labs in this module">${c.labs.map((k,i)=>`<a href="#lab-${k}" class="labJump">Fig. ${c.n}.${i+1} ${esc(BC.LABS[k].title)}</a>`).join("")}</nav>`:""}<div id="labs"></div></section>`)}
+  ${panel("practice",`<section id="probs"><div class="sectionHead spread"><h2>Practice problems</h2><span class="label">new numbers each time · 4.7k, 15m, 2.2u</span></div><div id="probList"></div></section>`)}
+  ${panel("quiz",`<section id="quiz"><div class="sectionHead spread"><h2>Check</h2><span class="score" id="score" aria-live="polite">${right} of ${c.quiz.length} right</span></div>
+    ${c.quiz.map((q,i)=>quizItem(c,q,i)).join("")}
+    ${answeredIn(c)?`<button class="btn" id="resetQuiz" type="button">Clear answers</button>`:""}
+  </section>`)}
   <nav class="pager" aria-label="Module navigation">${prev?`<a href="#m-${prev.n}"><span>← ${pad(prev.n)}</span>${esc(prev.title)}</a>`:`<a href="#home"><span>←</span>Contents</a>`}${next?`<a href="#m-${next.n}" class="r"><span>${pad(next.n)} →</span>${esc(next.title)}</a>`:`<a href="#arcade" class="r"><span>→</span>Arcade</a>`}</nav>`;
 }
+/* #m-1, #m-1/quiz, #lab-ohm -> {c, tab, lab} */
+function modRoute(h){
+  let m=/^m-(\d+)(?:\/(\w+))?$/.exec(h);
+  if(m){ const c=M[+m[1]-1]; if(!c) return null; return {c,tab:tabsOf(c).some(t=>t[0]===m[2])?m[2]:defaultTab(c)}; }
+  m=/^lab-(\w+)$/.exec(h); if(!m) return null;
+  const c=M.find(x=>x.labs.includes(m[1])); return c?{c,tab:"labs",lab:m[1]}:null;
+}
+/* panels mount on first view: a lab canvas has no size while its panel is hidden */
+function showTab(c,tab){
+  $$(".tabPanel").forEach(p=>p.hidden=p.id!=="panel-"+tab);
+  $$(".modTabs [role=tab]").forEach(t=>{ const on=t.id==="tab-"+tab; t.setAttribute("aria-selected",on); t.tabIndex=on?0:-1; });
+  if(tab==="labs"){ const host=$("#labs"); if(host&&!host.children.length) c.labs.forEach((k,i)=>BC.mountLab(k,host,`${c.n}.${i+1}`)); }
+  if(tab==="lesson"){ const host=$("#lessonHost"); if(host&&!host.children.length) BC.mountLesson(host,c.n); }
+  rerun();
+}
+const scrollToLab=lab=>{ const t=$("#lab-"+lab); if(!t) return; t.scrollIntoView({behavior:"auto",block:"start"}); t.setAttribute("tabindex","-1"); t.focus({preventScroll:true}); };
 /* deep body: blocks split by a blank line; "= " lines are formulas, "- " lines a list, anything else a paragraph */
 function deepBody(b){ return b.split("\n\n").map(k=>{ const ln=k.split("\n");
   return ln.every(x=>x.startsWith("= "))?`<div class="dform">${ln.map(x=>`<div>${esc(x.slice(2))}</div>`).join("")}</div>`:ln.every(x=>x.startsWith("- "))?`<ul class="ideas">${ln.map(x=>`<li><span>${esc(x.slice(2))}</span></li>`).join("")}</ul>`:`<p>${esc(k)}</p>`; }).join(""); }
@@ -245,12 +268,16 @@ function importBackup(txt){
 function render(){
   BC.leave.forEach(f=>{try{f();}catch(e){}}); BC.leave.length=0; BC.clearAnims();
   const h=location.hash.replace("#","")||"home"; const v=$("#view"); let m, title="Ohmly", lab=null;
-  const cm=(m=/^m-(\d+)$/.exec(h))?M[+m[1]-1]:(m=/^lab-(\w+)$/.exec(h))?M.find(c=>c.labs.includes(m[1])):null; if(cm&&m[0].startsWith("lab")) lab=m[1];
+  const rt=modRoute(h), cm=rt&&rt.c; if(rt) lab=rt.lab||null;
   if(cm){
-    const c=cm; currentKey=c.n; S.lastCh=c.n; BC.save(); v.innerHTML=moduleView(c); title=`${pad(c.n)} ${c.title} · Ohmly`;
-    if(c.labs.length){const host=$("#labs"); c.labs.forEach((k,i)=>BC.mountLab(k,host,`${c.n}.${i+1}`));}
+    const c=cm; currentKey=c.n; S.lastCh=c.n; BC.save(); v.innerHTML=moduleView(c,rt.tab); title=`${pad(c.n)} ${c.title} · Ohmly`;
+    showTab(c,rt.tab);
     if(BC.probCount(c.n)) BC.probMount($("#probList"),Array.from({length:BC.probCount(c.n)},(_,i)=>({n:c.n,i,label:`Problem ${c.n}.${i+1}`})));
     $$(".labJump").forEach(a=>a.addEventListener("click",e=>{e.preventDefault(); const t=$(a.getAttribute("href")); if(t){t.scrollIntoView({behavior:BC.reduced?"auto":"smooth",block:"start"}); t.setAttribute("tabindex","-1"); t.focus({preventScroll:true});}}));
+    $(".modTabs").addEventListener("keydown",e=>{ const tabs=$$(".modTabs [role=tab]"), i=tabs.indexOf(document.activeElement); if(i<0) return;
+      const to=e.key==="ArrowRight"?(i+1)%tabs.length:e.key==="ArrowLeft"?(i-1+tabs.length)%tabs.length:e.key==="Home"?0:e.key==="End"?tabs.length-1:null;
+      if(to!==null){ e.preventDefault(); tabs[to].focus(); location.hash=tabs[to].getAttribute("href"); }
+      else if(e.key===" "){ e.preventDefault(); location.hash=tabs[i].getAttribute("href"); } });
     $("#doneBtn").addEventListener("click",e=>{const was=!!S.done[c.n]; S.done[c.n]=!was; BC.save(); const b=e.currentTarget;
       b.classList.toggle("primary",was); b.setAttribute("aria-pressed",!was); b.textContent=!was?"✓ Finished":"Mark as finished";
       if(!was){ BC.beep("level"); S.xpDone ||= {}; if(!S.xpDone[c.n]){S.xpDone[c.n]=1; BC.addXP(50,"module "+c.n+" finished");}
@@ -293,8 +320,7 @@ function render(){
   } else if(h==="home"||h==="view"){ currentKey="home"; v.innerHTML=home(); title="Ohmly · An interactive platform for learning electronics"; BC.mountHero($("#heroHost")); }
   else { currentKey="404"; v.innerHTML=`<header class="stack"><h1 tabindex="-1">Not found</h1><p class="lede muted">There is nothing at this address. <a href="#home">Back to the contents</a>.</p></header>`; title="Not found · Ohmly"; }
   document.title=title; document.body.classList.toggle("tdWide",currentKey==="teardown"); rail(currentKey); header(); window.scrollTo(0,0);
-  const lt=lab&&$("#lab-"+lab);
-  if(lt){ lt.scrollIntoView({behavior:"auto",block:"start"}); lt.setAttribute("tabindex","-1"); lt.focus({preventScroll:true}); }
+  if(lab&&$("#lab-"+lab)) scrollToLab(lab);
   else { const h1=$("#view h1"); if(h1&&routed) h1.focus({preventScroll:true}); }
   routed=true;
   $("#rail").classList.remove("open"); $("#railToggle").setAttribute("aria-expanded","false");
@@ -305,7 +331,13 @@ const rerun=()=>{$$(".lab").forEach(l=>l._run&&l._run()); BC.redraw();};
 $("#railToggle").addEventListener("click",()=>{const r=$("#rail"),o=!r.classList.contains("open"); r.classList.toggle("open",o); $("#railToggle").setAttribute("aria-expanded",o);});
 $("#soundBtn").addEventListener("click",()=>{S.sound=!S.sound; BC.save(); header(); if(S.sound) BC.beep("good");});
 $("#themeBtn").addEventListener("click",()=>{const order=["system","light","dark"]; S.theme=order[(order.indexOf(S.theme||"system")+1)%3]; BC.save(); applyTheme(); header(); rerun(); BC.toast("Theme: "+({system:"match my device",light:"light",dark:"dark"})[S.theme]);});
-window.addEventListener("hashchange",()=>{ if(location.hash==="#view"){ $("#view").focus(); return; } render(); });
+window.addEventListener("hashchange",()=>{ if(location.hash==="#view"){ $("#view").focus(); return; }
+  /* a tab change inside the open module keeps the page: no remount, no focus jump */
+  const rt=modRoute(location.hash.replace("#",""));
+  if(rt&&rt.c.n===currentKey&&$(".modTabs")){ showTab(rt.c,rt.tab); const tl=$(".modTabs");
+    if(rt.lab) scrollToLab(rt.lab); else if(scrollY>tl.getBoundingClientRect().top+scrollY-64) tl.scrollIntoView({block:"start"});
+    return; }
+  render(); });
 let rt; window.addEventListener("resize",()=>{clearTimeout(rt); rt=setTimeout(()=>{rerun(); const p=$("#pcb"); if(p&&+p.dataset.cols!==(innerWidth<700?3:6)) p.outerHTML=pcbMap();},150);});
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",rerun);
 BC.tickStreak();

@@ -169,13 +169,10 @@ svg.pcb.narrow{min-width:0}
 .pcb .chipLink:focus-visible .chip{stroke:var(--copper-lit);stroke-width:3}
 
 /* ---------- module ---------- */
-.modHead{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 22px;align-items:end;border-bottom:2px solid var(--rule);padding-bottom:18px}
+.modHead{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 22px;align-items:end;border-bottom:2px solid var(--rule)}
 .modNo{font-family:var(--f-display);font-weight:700;font-size:clamp(4rem,10vw,6.5rem);line-height:.8;color:var(--accent);font-variant-numeric:tabular-nums}
 .modHead .partName{font-size:.9rem;color:var(--muted)}
-.modHead h1{font-size:clamp(2.1rem,5vw,3.3rem)}
-.modMeta{grid-column:1/-1;display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:14px;font-family:var(--f-mono);font-size:.8rem;color:var(--muted)}
-.modMeta .sp{flex:1}
-.modMeta .btn{font-family:var(--f-body);font-size:.92rem}
+.modHead h1{font-size:clamp(2.1rem,4vw,2.8rem)}
 .back{font-size:.9rem;text-decoration:none;color:var(--muted)}
 ul.ideas{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px;max-width:72ch}
 ul.ideas li{display:grid;grid-template-columns:18px 1fr;gap:6px}
@@ -539,9 +536,36 @@ label.btn{cursor:pointer}
   .adRow{grid-template-columns:40px repeat(5,minmax(0,1fr)) 40px;gap:5px}
   .lcd{font-size:1.5rem}
   table.toc td.labs{display:none}
-  .modHead{grid-template-columns:minmax(0,1fr)}
 }
 @media (max-width:440px){ .lv{display:none} }
+
+/* ---------- module tabs ---------- */
+.modTabs{grid-column:1/-1;display:flex;margin-top:12px;gap:2px}
+.modTabs a{flex:0 1 auto;min-height:44px;display:flex;align-items:center;justify-content:center;gap:5px;padding:0 16px;font-family:var(--f-mono);font-size:.84rem;text-decoration:none;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-2px}
+.modTabs a:hover{color:var(--ink)}
+.modTabs a[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent);font-weight:500}
+.modTabs small{font-size:.7rem;color:var(--muted)}
+.modHead+.tabPanel{margin-top:-20px}
+.tabPanel[hidden]{display:none}
+.tabPanel:focus{outline:none}
+.tabPanel:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+.tabStack{display:flex;flex-direction:column;gap:38px}
+.tabStack>*{min-width:0}
+@media (max-width:640px){
+  main{padding-block:10px 60px}
+  .wrap{gap:12px}
+  .modHead{grid-template-columns:minmax(0,1fr) auto;gap:0 10px;align-items:start}
+  .modNo{display:none}
+  .modHead h1{font-size:1.5rem}
+  .modHead+.tabPanel{margin-top:0}
+  .modHead .partName{font-size:.78rem}
+  #doneBtn{padding:6px 10px;font-size:.8rem;min-height:44px;line-height:1.1;max-width:104px}
+  .modTabs{margin-top:4px;gap:0}
+  .modTabs a{flex:1 1 0;padding:0 2px;font-size:.78rem}
+  .modTabs small{display:none}
+  .tabStack{gap:28px}
+  .wrap>.pager,.wrap>.map{margin-top:18px}
+}
 
 /* ---------- lesson: every region has a fixed height, so nothing moves between steps ---------- */
 #lessonHost{container-type:inline-size;width:100%}

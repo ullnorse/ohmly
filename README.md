@@ -46,6 +46,7 @@ js/data.js        course content: modules, ideas, formulas, quizzes
 js/core.js        state, XP, badges, sound, confetti, plotting
 js/problems.js    practice-problem templates, SI answer parser, grading, problem cards
 js/labs.js        the 34 interactive labs
+js/lessons.js     height picture (circuit solver and renderer), lesson engine, lesson data
 js/games.js       the arcade games
 js/teardown.js    Teardown: the ull-pocket board, its part cards, net notes and design notes
 js/teardown-time.js  Teardown's time half: power model, timeline, I²C waveforms, stories, probe
@@ -65,7 +66,20 @@ All course text lives in `js/data.js`. Each module has `n`, `part` (a key of `PA
 - `ex: [{q, steps:[...], ans}]` worked examples, one numbered step per line, units at every step.
 - `deep: [{t, body}]` collapsed "Going deeper" entries, never counted toward completion. In `body`, blocks are separated by a blank line; a block of `= ` lines is a formula, a block of `- ` lines is a list, anything else is a paragraph.
 
-Module page order: intro, key points, formulas, worked examples, labs, practice problems, quiz, going deeper, note, reading.
+Module pages have tabs, addressed as `#m-1/quiz`: Lesson, Notes (intro, key points, formulas, worked examples, going deeper, note, reading), Labs, Practice, Quiz. A tab with no content is hidden. Lesson is the default when the module has one, otherwise Notes. `#lab-<id>` opens Labs and scrolls to the lab.
+
+## Lessons
+
+`BC.LESSONS[moduleNumber]` in `js/lessons.js` is `{xp, widget, hotspot, steps, end}`. Each step has `id`, `kind`, `prompt` (at most about 15 words), `insight` (at most about 20 words, shown on success), `setup(s, vals)` and `ro` (readout cells), plus by kind:
+
+- `do`: `actions`, `sliders`, `goal(s)`.
+- `hit`: `sliders`, `target: {of, to, tol, show}`.
+- `predict`: `choices: [{t, ok}]`, `reveal(s, choice)`, `settled(s, solved)`, optional `retry`. The first guess is recorded in `pred` and shown as "you predicted N of M" at the end, with no penalty.
+- `probe`: `points: [{id, node, label}]`, `targets: [{t, test(dv, s)}]`.
+
+`keep(s, vals)` stores numbers for the end screen, whose `end.rows` light up each formula of the module with a value the learner produced. No formula appears before that screen. Progress is in `S.lessons[n]` (`step`, `max`, `done`, `vals`, `pred`); XP is paid once through `BC.once("lesson-<n>")`.
+
+The picture is driven by a circuit description: `{gnd, vmax, nodes: {id: {at: [u, v], flat?}}, edges: [{id, t, a, b, ...}]}`, solved by nodal analysis. Height is node voltage; edge types are in `TYPES` (`wire`, `resistor`, `switch`, `fuse`, `source`). A new part needs one `TYPES` entry: `g(e)` for its conductance and `draw(c)`.
 
 ## Teardown
 
