@@ -301,9 +301,10 @@ function Terrain(stage){
     const h=pt(0,0); g.beginPath(); g.arc(h[0],h[1],clamp(R*.14,3,6),0,7); g.fillStyle=P.inkS; g.fill(); g.lineCap="butt";
   }
   /* the battery's face: one notch per volt, chevrons climbing as fast as the current */
+  let tagQ=[];
   function towerMarks(g,e,n,s,z){
     const P=PAL, hs=geo.hs, u=n[0]+s, H=z*hs; if(Math.abs(H)<3) return;
-    if(e.tag){ const q=iso(n[0],n[1],z), skew=geo.k/geo.c, size=clamp(geo.sc*s*.62,12,30); g.save(); g.translate(q[0],q[1]); g.transform(1,skew,-1,skew,0,0); g.font=`700 ${size}px ${FONT.display}`; g.textAlign="center"; g.textBaseline="middle"; g.fillStyle=rgb(mix(P.towT,P.bg,.9)); g.fillText(e.tag,0,0); g.restore(); g.textBaseline="alphabetic"; }
+    if(e.tag){ const q=iso(n[0],n[1],z), up=z<0?1:-1; tagQ.push({t:e.tag,x:q[0],y:q[1]+up*(s*geo.sc*geo.k+12)}); }
     /* below the floor: notches on the shaft's back wall */
     if(z<0){ const vB=n[1]-s; g.lineWidth=1; g.strokeStyle=rgb(P.towE,.55); g.beginPath(); for(let k=-1;k>z+.02;k--){ const a=iso(n[0]-s,vB,k), b=iso(n[0]+s,vB,k); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); } g.stroke(); return; }
     const fx=(v,zz)=>iso(u,v,zz);
@@ -344,7 +345,7 @@ function Terrain(stage){
     const tu=du/L, tv=dv/L, nu=-tv*hw, nv=tu*hw, w=1-M, C=colours(b), base=b.base*1;
     const a1=corner(A,nu*w,nv*w,A.z), b1=corner(B,nu*w,nv*w,B.z), b2=corner(B,-nu*w,-nv*w,B.z), a2=corner(A,-nu*w,-nv*w,A.z);
     const fa1=corner(A,nu*w,nv*w,base), fb1=corner(B,nu*w,nv*w,base), fb2=corner(B,-nu*w,-nv*w,base), fa2=corner(A,-nu*w,-nv*w,base);
-    const wall=(p,q,fq,fp,ox,oy)=>{ if(b.under){ if(ox+oy>-1e-3) return; const y0=Math.min(fp[1],fq[1]), y1=Math.max(p[1],q[1]); if(y1-y0<.4) return; const col=Math.abs(oy)>=Math.abs(ox)?C.v:C.u, gr=g.createLinearGradient(0,y0,0,y1); gr.addColorStop(0,rgb(col,.15)); gr.addColorStop(1,rgb(mix(col,PAL.shadow,PAL.dark?.3:.15))); poly4(g,p,q,fq,fp); g.fillStyle=gr; g.fill(); return; } if(ox+oy<1e-3) return; const col=oy>=ox?C.v:C.u, ymin=Math.min(p[1],q[1]), ymax=Math.max(fp[1],fq[1]); if(ymax-ymin<.4) return;
+    const wall=(p,q,fq,fp,ox,oy)=>{ if(b.under){ if(ox+oy>-1e-3) return; const y0=Math.min(fp[1],fq[1]), y1=Math.max(p[1],q[1]); if(y1-y0<.4) return; const col=Math.abs(oy)>=Math.abs(ox)?C.v:C.u, gr=g.createLinearGradient(0,y0,0,y1); gr.addColorStop(0,rgb(col,.32)); gr.addColorStop(1,rgb(mix(col,PAL.shadow,PAL.dark?.3:.15))); poly4(g,p,q,fq,fp); g.fillStyle=gr; g.fill(); return; } if(ox+oy<1e-3) return; const col=oy>=ox?C.v:C.u, ymin=Math.min(p[1],q[1]), ymax=Math.max(fp[1],fq[1]); if(ymax-ymin<.4) return;
       poly4(g,p,q,fq,fp); if(ymax-ymin>5){ const gr=g.createLinearGradient(0,ymin,0,ymax); gr.addColorStop(0,rgb(col)); gr.addColorStop(1,rgb(mix(col,PAL.shadow,PAL.dark?.45:.28))); g.fillStyle=gr; g.strokeStyle=gr; } else { g.fillStyle=rgb(col); g.strokeStyle=rgb(col); } g.lineWidth=.6; g.fill(); g.stroke(); };
     wall(a1,b1,fb1,fa1,nu,nv); wall(b2,a2,fa2,fb2,-nu,-nv); wall(b1,b2,fb2,fb1,tu,tv); wall(a2,a1,fa1,fa2,-tu,-tv);
     poly4(g,a1,b1,b2,a2); g.fillStyle=rgb(C.top); g.fill(); g.strokeStyle=rgb(C.top); g.lineWidth=.6; g.stroke(); g.strokeStyle=rgb(C.edge,PAL.dark?.5:.75); g.lineWidth=1; g.beginPath(); g.moveTo(a1[0],a1[1]); g.lineTo(b1[0],b1[1]); g.moveTo(b2[0],b2[1]); g.lineTo(a2[0],a2[1]); if(b.style==="tower"||b.caps){ g.moveTo(b1[0],b1[1]); g.lineTo(b2[0],b2[1]); g.moveTo(a2[0],a2[1]); g.lineTo(a1[0],a1[1]); } g.stroke();
@@ -379,6 +380,18 @@ function Terrain(stage){
   const slabCorners=()=>{ const {U,V,E}=geo; return [iso(-E,-E,0),iso(U+E,-E,0),iso(U+E,V+E,0),iso(-E,V+E,0)]; };
   const slabPath=g=>{ const q=slabCorners(); g.beginPath(); q.forEach((a,i)=>i?g.lineTo(a[0],a[1]):g.moveTo(a[0],a[1])); g.closePath(); };
   /* the base is a slab on the page: cached, since it only changes with size and theme */
+  let wallLabs=[];
+  /* the scale's numbers ride above the solids, kept inside the frame, so no wall or tower covers them */
+  function drawScale(g,W,H){
+    if(M>=1||!wallLabs.length) return; const P=PAL; g.save(); g.globalAlpha=1-M; g.font=`500 ${labelPx(11)}px ${FONT.mono}`; g.textAlign="right"; g.lineJoin="round"; g.lineWidth=3.5; g.strokeStyle=rgb(P.bg,.8); g.fillStyle=rgb(P.muted);
+    wallLabs.forEach(([t,x,y])=>{ x=Math.min(x,W-4); y=clamp(y,12,H-4); g.strokeText(t,x,y); g.fillText(t,x,y); }); g.restore();
+  }
+  /* part tags stand upright on a chip, clamped inside the frame */
+  function drawTags(g,W,H){
+    const P=PAL; if(!tagQ.length) return; const sz=labelPx(clamp(geo.sc*.058,13,18)); g.save(); g.globalAlpha=solidA; g.font=`600 ${sz}px ${FONT.mono}`; g.textAlign="center"; g.textBaseline="middle";
+    tagQ.forEach(({t,x,y})=>{ const w=g.measureText(t).width+10, h=sz+6; x=clamp(x,w/2+3,W-w/2-3); y=clamp(y,h/2+3,H-h/2-3); wallLabs.forEach(([lt,lx,ly])=>{ const lw=g.measureText(lt).width, ly0=clamp(ly,12,H-4), lxr=Math.min(lx,W-4); if(Math.abs(ly0-4-y)<h/2+6&&x+w/2>lxr-lw-2&&x-w/2<lxr+2) x=Math.min(x,lxr-lw-w/2-4); }); g.fillStyle=rgb(P.bg,.92); g.strokeStyle=rgb(P.line); g.lineWidth=1; g.beginPath(); g.rect(x-w/2,y-h/2,w,h); g.fill(); g.stroke(); g.fillStyle=P.inkS; g.fillText(t,x,y+.5); });
+    g.restore(); tagQ=[];
+  }
   function drawFloor(g,W,H,dpr,under){
     if(M>=1) return; const key=[W,H,dpr,geo.U,geo.V,geo.sc,geo.oy,PAL.key].join();
     if(key!==floorKey){ floorKey=key; floorCv.width=Math.round(W*dpr); floorCv.height=Math.round(H*dpr); const f=floorCv.getContext("2d"); f.setTransform(dpr,0,0,dpr,0,0); const P=PAL,{U,V,E,slab}=geo, q=slabCorners();
@@ -395,16 +408,17 @@ function Terrain(stage){
     }
     /* the room's back walls carry the height scale, so the empty air above a low ledge still measures something. Cached apart from the floor: they alone follow the scale. */
     const vm=T.vm||18, vlo=T.desc.vmin||0, wk=[key,vm.toFixed(1),vlo].join();
-    if(wk!==wallKey){ wallKey=wk; wallCv.width=Math.round(W*dpr); wallCv.height=Math.round(H*dpr); const f=wallCv.getContext("2d"), P=PAL, q=slabCorners(); f.setTransform(dpr,0,0,dpr,0,0);
+    if(wk!==wallKey){ wallKey=wk; wallCv.width=Math.round(W*dpr); wallCv.height=Math.round(H*dpr); wallLabs=[]; const f=wallCv.getContext("2d"), P=PAL, q=slabCorners(); f.setTransform(dpr,0,0,dpr,0,0);
       const wallH=vm*geo.hs, wall=(a,b)=>{ const gr=f.createLinearGradient(0,a[1]-wallH,0,a[1]); gr.addColorStop(0,rgb(P.floor2,0)); gr.addColorStop(1,rgb(P.floor2,P.dark?.7:.9)); f.fillStyle=gr; f.beginPath(); f.moveTo(a[0],a[1]); f.lineTo(b[0],b[1]); f.lineTo(b[0],b[1]-wallH); f.lineTo(a[0],a[1]-wallH); f.closePath(); f.fill(); };
       wall(q[0],q[1]); wall(q[0],q[3]);
       const stepV=vm<=10?1:vm<=40?5:vm<=120?20:vm<=400?50:100; f.lineWidth=1; f.font=`500 ${labelPx(11)}px ${FONT.mono}`; f.textAlign="right";
       const top=vm>40?vm*2.2:vm;   /* past the back corner a tall spike still has lines to read against */
-      for(let z=stepV;z<top;z+=stepV){ const y=z*geo.hs; f.strokeStyle=rgb(P.grid,P.dark?.9:1); f.beginPath(); f.moveTo(q[3][0],q[3][1]-y); f.lineTo(q[0][0],q[0][1]-y); f.lineTo(q[1][0],q[1][1]-y); f.stroke(); f.fillStyle=rgb(P.muted,.8); f.fillText(z+" V",q[1][0]-3,q[1][1]-y-5); }
+      const every=Math.max(1,Math.ceil(15/(stepV*geo.hs)));
+      for(let z=stepV,i=1;z<top;z+=stepV,i++){ const y=z*geo.hs; f.strokeStyle=rgb(P.grid,P.dark?.9:1); f.beginPath(); f.moveTo(q[3][0],q[3][1]-y); f.lineTo(q[0][0],q[0][1]-y); f.lineTo(q[1][0],q[1][1]-y); f.stroke(); if(i%every===0) wallLabs.push([z+" V",q[1][0]-3,q[1][1]-y-5]); }
       /* the same walls carry on below the floor, darker and fading out */
       if(vlo<0){ const deep=-vlo*geo.hs, base=mix(P.floor2,P.shadow,P.dark?.25:.12), sunk=(a,b)=>{ const gr=f.createLinearGradient(0,Math.min(a[1],b[1]),0,Math.max(a[1],b[1])+deep); gr.addColorStop(0,rgb(base,P.dark?.7:.9)); gr.addColorStop(1,rgb(base,0)); f.fillStyle=gr; f.beginPath(); f.moveTo(a[0],a[1]); f.lineTo(b[0],b[1]); f.lineTo(b[0],b[1]+deep); f.lineTo(a[0],a[1]+deep); f.closePath(); f.fill(); };
         sunk(q[0],q[1]); sunk(q[0],q[3]);
-        for(let z=stepV;z<=-vlo;z+=stepV){ const y=z*geo.hs; f.strokeStyle=rgb(P.grid,P.dark?.9:1); f.beginPath(); f.moveTo(q[3][0],q[3][1]+y); f.lineTo(q[0][0],q[0][1]+y); f.lineTo(q[1][0],q[1][1]+y); f.stroke(); f.fillStyle=rgb(P.muted,.8); f.fillText("−"+z+" V",q[1][0]-3,q[1][1]+y-5); } } }
+        for(let z=stepV,i=1;z<=-vlo;z+=stepV,i++){ const y=z*geo.hs; f.strokeStyle=rgb(P.grid,P.dark?.9:1); f.beginPath(); f.moveTo(q[3][0],q[3][1]+y); f.lineTo(q[0][0],q[0][1]+y); f.lineTo(q[1][0],q[1][1]+y); f.stroke(); if(i%every===0) wallLabs.push(["−"+z+" V",q[1][0]-3,q[1][1]+y-5]); } } }
     g.save(); g.globalAlpha=1-M; g.setTransform(1,0,0,1,0,0); g.drawImage(wallCv,0,0); if(!under) g.drawImage(floorCv,0,0); g.restore();
     if(under){ under(); g.save(); g.globalAlpha=(1-M)*GLASS; g.setTransform(1,0,0,1,0,0); g.drawImage(floorCv,0,0); g.restore(); }
   }
@@ -417,13 +431,18 @@ function Terrain(stage){
       const gr=g.createRadialGradient(0,0,0,0,0,1), col=i>1?mix(P.accent,P.hot,Math.min(1,i-1)):P.accent; gr.addColorStop(0,rgb(col,Math.min(.55,i*(P.dark?.5:.36))*(1-M))); gr.addColorStop(1,rgb(col,0)); g.fillStyle=gr; g.beginPath(); g.arc(0,0,1,0,7); g.fill(); g.restore(); });
   }
   /* floor print: a label lying on the base, standing up as the picture morphs flat */
-  function drawPrint(g,items){
+  /* a label standing behind another part's tower stays under it; one beside a part rides above the walls, so they can't hide it */
+  function ownedBy(e,x,y){
+    return boxes.some(b=>{ if(b.style!=="tower"||b.id.startsWith(e.id+":")) return false; const pts=[b.A,b.B].flatMap(q=>[T.project(q,M),T.project({...q,z:0},M)]), pad=b.hw*geo.sc;
+      return x>=Math.min(...pts.map(p=>p[0]))-pad&&x<=Math.max(...pts.map(p=>p[0]))+pad&&y>=Math.min(...pts.map(p=>p[1]))-pad&&y<=Math.max(...pts.map(p=>p[1]))+pad; });
+  }
+  function drawPrint(g,items,late){
     const P=PAL, {c,k,sc}=geo, size=clamp(sc*.115,sc<200?19:15,34), sz=size+(13-size)*M, skew=k/c;
     g.textAlign="center"; g.textBaseline="middle"; g.font=`600 ${sz}px ${FONT.display}`;
     items.forEach(({e,info})=>{ if(!e.label) return; const lines=Array.isArray(e.label)?e.label:[e.label], lab=e.lab||[0,.25], P0=info.poly[0], P1=info.poly[info.poly.length-1], q={u:(P0.u+P1.u)/2+lab[0],v:(P0.v+P1.v)/2+lab[1],z:0,fu:(P0.fu+P1.fu)/2,fv:(P0.fv+P1.fv)/2}, f=e.labf||[0,-22];
-      const pos=T.project(q,M); pos[0]+=f[0]*M; pos[1]+=f[1]*M;
-      g.save(); g.translate(pos[0],pos[1]); g.transform(1,skew*(1-M),-1*(1-M),skew+(1-skew)*M,0,0); g.fillStyle=e.labc?rgb(P[e.labc]):rgb(P.muted);
-      lines.forEach((t,i)=>g.fillText(t,0,(i-(lines.length-1)/2)*sz*1.12)); g.restore(); });
+      const pos=T.project(q,M); pos[0]+=f[0]*M; pos[1]+=f[1]*M; if(M<.5?ownedBy(e,pos[0],pos[1])!==!late:late) return;
+      g.save(); g.translate(pos[0],pos[1]); g.transform(1,skew*(1-M),-1*(1-M),skew+(1-skew)*M,0,0); g.fillStyle=e.labc?rgb(P[e.labc]):P.mutedS;
+      g.lineJoin="round"; g.lineWidth=3.5; g.strokeStyle=rgb(P.bg,.8); lines.forEach((t,i)=>{ const y=(i-(lines.length-1)/2)*sz*1.12; g.strokeText(t,0,y); g.fillText(t,0,y); }); g.restore(); });
     g.textBaseline="alphabetic";
   }
   const FONT={};
@@ -549,7 +568,7 @@ function Terrain(stage){
   }
   /* the time on the clock, and the honest scale of it */
   function drawClock(g,W,H){
-    const ck=T.desc.clock; if(!ck) return; const P=PAL, big=clamp(geo.sc*.075,18,26), small=labelPx(12.5), y=H-10-M*38, x=10+M*geo.flatM[0];
+    const ck=T.desc.clock; if(!ck) return; const P=PAL, big=clamp(geo.sc*.075,18,26), small=labelPx(12.5), y=H-10-M*46, x=10+M*geo.flatM[0];
     tag(g,ck.scale,x,y,P.mutedS,small,"left"); tag(g,ck.t,x,y-small-5,P.inkS,big,"left",600);
   }
   /* the last run, plotted: time across, one quantity up, drawn by the same steps that move the picture */
@@ -590,7 +609,7 @@ function Terrain(stage){
     const P=pal(); if(!FONT.mono||FONT.key!==P.key){ const cs=getComputedStyle(document.documentElement); FONT.mono=cs.getPropertyValue("--f-mono"); FONT.display=cs.getPropertyValue("--f-display"); FONT.key=P.key; }
     fit(W,H); advance(dt); index();
     M=smooth(T.m);
-    boxes=[];
+    boxes=[]; tagQ=[];
     const D=T.desc, items=D.edges.map(e=>({e,info:polyOf(e)}));
     items.forEach(it=>{ it.c=context(it.e,it.info,g); if(it.c.pres>.01) TYPES[it.e.t].solid(it.c); });
     /* landings */
@@ -602,12 +621,16 @@ function Terrain(stage){
     moveStreams(items,dt);
     drawFloor(g,W,H,dpr,glass?()=>{ const a=1-clamp((M-.55)/.4,0,1); if(a>0){ g.globalAlpha=a; orderBoxes().forEach(i=>{ if(boxes[i].under) drawBox(g,boxes[i]); }); g.globalAlpha=1; } items.forEach(({e,info})=>{ if(info.sunk&&!e.inner) streamOf(g,e,info); }); }:null);
     if(glass) drawOpenings(g);
+    drawTrace(g,W,H);
     drawShadows(g,W,H);
     drawGlows(g,items);
-    drawPrint(g,items);
+    drawPrint(g,items,false);
     drawGhosts(g,items);
     solidA=1-clamp((M-.55)/.4,0,1);
     if(solidA>0){ g.globalAlpha=solidA; orderBoxes().forEach(i=>{ if(!boxes[i].under) drawBox(g,boxes[i]); }); g.globalAlpha=1; }
+    drawPrint(g,items,true);
+    drawScale(g,W,H);
+    drawTags(g,W,H);
     drawGapMarks(g,items);
     drawTies(g,items);
     if(M>.3){ g.globalAlpha=clamp((M-.3)/.45,0,1); items.forEach(it=>{ it.c.p=it.info.full.map(q=>T.project(q,M)); it.c.line=()=>{ g.strokeStyle=PAL.inkS; g.lineWidth=2.5; g.lineJoin="round"; g.beginPath(); it.c.p.forEach((q,i)=>i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1])); g.stroke(); }; if(!it.e.ghost&&!it.e.nosch) TYPES[it.e.t].symbol(it.c); }); g.globalAlpha=1; }
@@ -618,7 +641,6 @@ function Terrain(stage){
     items.forEach(({e,info})=>{ if(!e.tag||(e.t==="source"&&M<.6)||(e.nosch&&M>.5)) return; const b=e.tagAt==="a"?info.full[0]:info.full[info.full.length-1], p=T.project(b,M), o=e.tagOff||[0,-14], f=e.tagf||o; tag(g,e.tag,p[0]+o[0]+(f[0]-o[0])*M,p[1]+o[1]+(f[1]-o[1])*M,e.tagc?P[e.tagc+"S"]:P.inkS,labelPx(clamp(geo.sc*.058,13,18)),e.align||"center",600); });
     drawArcs(g,items);
     drawFx(g,dt);
-    drawTrace(g,W,H);
     drawClock(g,W,H);
     if(T.flash>0&&!BC.reduced){ g.globalAlpha=T.flash*(P.dark?.28:.42); g.fillStyle=P.dark?rgb(P.hot):"#fff"; g.fillRect(-10,-10,W+20,H+20); g.globalAlpha=1; }
     if(M<.5&&!T.grabbing) T.grips.forEach(gp=>{ const q=T.gripAt(gp); if(!q) return; const pu=BC.reduced?.3:(Math.sin(T.clock*3)+1)/2; g.beginPath(); g.arc(q[0],q[1],9+pu*2.5,0,7); g.fillStyle=P.dark?"rgba(255,255,255,.14)":"rgba(255,255,255,.55)"; g.fill(); g.strokeStyle=P.inkS; g.lineWidth=1.5; g.stroke(); g.beginPath(); g.arc(q[0],q[1],2.5,0,7); g.fillStyle=P.inkS; g.fill(); });
