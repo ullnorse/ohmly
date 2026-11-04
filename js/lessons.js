@@ -43,7 +43,7 @@ const TYPES={
 /* modified nodal analysis; a tiny leak to ground puts floating nodes on the floor */
 function solve(d){
   const flips=d.edges.filter(e=>TYPES[e.t].flip); let r=solveOnce(d);
-  for(let k=0;k<8&&flips.length;k++){ let changed=false; flips.forEach(e=>{ if(TYPES[e.t].flip(e,r.v,r.I)) changed=true; }); if(!changed) break; r=solveOnce(d); }
+  for(let k=0;k<8&&flips.length;k++){ let changed=false; flips.forEach(e=>{ if(TYPES[e.t].flip(e,r.v,r.I,d)) changed=true; }); if(!changed) break; r=solveOnce(d); }
   return r;
 }
 /* advance the parts with memory by run seconds, in steps of at most hmax (backward Euler) */
@@ -474,7 +474,7 @@ function Terrain(stage){
   }
   /* a dashed line from the control node, at its own height, to the gate on the slope */
   function drawTies(g,items){
-    items.forEach(({e,info})=>{ if(!TYPES[e.t].ctl||e.ghost) return; const A=info.run[0], B=info.run[info.run.length-1], q=T.nodeAt(e.ctl), m=T.project(lerpP(A,B,.5),M); g.save(); g.strokeStyle=PAL.mutedS; g.lineWidth=1.8; g.setLineDash([5,4]); g.beginPath(); g.moveTo(q[0],q[1]); g.lineTo(m[0],m[1]); g.stroke(); g.restore(); });
+    items.forEach(({e,info})=>{ if(!TYPES[e.t].ctl||e.ghost) return; const A=info.run[0], B=info.run[info.run.length-1], m=T.project(lerpP(A,B,.5),M); [e.ctl,e.ctl2].filter(Boolean).forEach(n=>{ const q=T.nodeAt(n); g.save(); g.strokeStyle=PAL.mutedS; g.lineWidth=1.8; g.setLineDash([5,4]); g.beginPath(); g.moveTo(q[0],q[1]); g.lineTo(m[0],m[1]); g.stroke(); g.restore(); }); });
   }
   /* an LED's light: a bulb on the ledge and a halo that follows the flow */
   function drawLights(g,items){
@@ -977,6 +977,51 @@ const power={
   alt:(s,o)=>`source ${sgn(o.v.e)} of ${s.pk} volts peak${s.diode?", diode in line":""}${s.tank?", "+fmt(s.C,"F")+" tank":""}${s.reg?", 5 volt regulator":""}, load height ${volts(+o.v.lo.toFixed(2))}.`
 };
 
+/* ---------- module 15: an op amp lifts or sinks its output until its two inputs are level ----------
+   Stated model. Gain 1e5, output clamped to ±9 V rails (rail to rail), inputs draw no current. The output is a stiff source (1 mΩ) whose level the part's flip finds by secant on the whole circuit, so any feedback converges in one pass. Slew 12 V/s is for the picture only. */
+const OA={A:1e5,G:1e3,rail:9,slew:12};
+TYPES.opamp={tall:true, ctl:1, g:()=>OA.G, j:e=>OA.G*(e.Vo||0),
+  flip:(e,v,I,d)=>{ const old=e.Vo||0, f=V=>{ e.Vo=V; const r=solveOnce(d); return V-OA.A*(r.v[e.ctl]-r.v[e.ctl2]); }, f0=f(0), f1=f(1), V=f1>f0?clamp(-f0/(f1-f0),e.lo,e.hi):0; e.Vo=V; return Math.abs(V-old)>1e-9; },
+  solid:c=>c.tower(), symbol:symOpamp};
+function symOpamp(c){
+  const {g,p,e}=c, a=p[0], b=p[p.length-1], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L, nx=uy, ny=-ux, P=PAL, r=Math.min(30,L*.3), h=r*1.05, cx=(a[0]+b[0])/2, cy=(a[1]+b[1])/2;
+  g.strokeStyle=P.inkS; g.lineWidth=2.5; g.lineJoin="round"; g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke();
+  g.fillStyle=P.bgS; g.beginPath(); g.moveTo(cx+ux*r*1.3,cy+uy*r*1.3); g.lineTo(cx-ux*r+nx*h,cy-uy*r+ny*h); g.lineTo(cx-ux*r-nx*h,cy-uy*r-ny*h); g.closePath(); g.fill(); g.stroke();
+  g.font=`700 15px ${c.font}`; g.textAlign="center"; g.textBaseline="middle"; g.fillStyle=P.inkS;
+  g.fillText(e.inv?"−":"+",cx-ux*r*.45+nx*h*.5,cy-uy*r*.45+ny*h*.5); g.fillText(e.inv?"+":"−",cx-ux*r*.45-nx*h*.5,cy-uy*r*.45-ny*h*.5);
+}
+const winOf=s=>{ const R=OA.rail, w=OA.slew*s.t; return s.slew?[Math.max(-R,s.v0-w),Math.min(R,s.v0+w)]:[-R,R]; };
+function ampCircuit(s){
+  const R=OA.rail, inv=s.rin!==null, [lo,hi]=winOf(s), res=(id,a,b,v,lab)=>({id,t:"resistor",a,b,R:v,rating:5,label:fmt(v,"Ω"),...lab});
+  const H={lab:[0,.27],labf:[0,-26]}, Vt={lab:[.27,0],labf:[34,0]};
+  const nodes={g:{at:[0,.86]},gm:{at:[.55,.86]},go:{at:[1.1,.86]},gp:{at:[1.7,0]},gn:{at:[2.2,0]},rp:{at:[1.7,0],flat:[1.7,.3]},rn:{at:[2.2,0],flat:[2.2,.3]},
+    in:{at:[0,.86],flat:[0,.3]},i:{at:[0,0]},o:{at:[1.1,.86],flat:[1.1,.3]},fo:{at:[1.1,0]},m:{at:[.55,0]}};
+  const edges=[{id:"src",t:"source",a:"g",b:"in",V:s.Vin,box:.15,tag:volts(+s.Vin.toFixed(2)),tagOff:[0,-12],tagf:[-30,44]},{id:"w0",t:"wire",a:"in",b:"i"},
+    {id:"wg1",t:"wire",a:"g",b:"gm"},{id:"wg2",t:"wire",a:"gm",b:"go"},{id:"wg3",t:"wire",a:"go",b:"gp"},{id:"wg4",t:"wire",a:"gp",b:"gn"},
+    {id:"rp",t:"source",a:"gp",b:"rp",V:R,box:.1,tag:"+"+R+" V rail",tagOff:[0,-10],tagf:[0,30]},{id:"rn",t:"source",a:"gn",b:"rn",V:-R,box:.1,tag:"−"+R+" V rail",tagOff:[0,-10],tagf:[0,30]},
+    {id:"A",t:"opamp",a:"go",b:"o",box:.2,ctl:inv?"gm":"i",ctl2:"m",inv,lo,hi},{id:"wo",t:"wire",a:"o",b:"fo"}];
+  if(s.ref!==null){ nodes.mt={at:[.55,.86],flat:[.55,.3]}; edges.push({id:"ref",t:"source",a:"gm",b:"mt",V:s.ref,box:.15,tag:volts(s.ref),tagOff:[0,-12],tagf:[30,44]},{id:"wr",t:"wire",a:"mt",b:"m"}); }
+  if(inv) edges.push(res("Rin","i","m",s.rin,H));
+  if(s.rf===null){ if(s.fb||s.ref===null) edges.push({id:"fb",t:"wire",a:"fo",b:"m",ghost:!s.fb}); }
+  else edges.push(res("Rf","fo","m",s.rf,H));
+  if(!inv&&(s.rg!==null||s.gr)) edges.push({...res("Rg","m","gm",s.rg||1000,Vt),ghost:s.rg===null});
+  return {gnd:"g",vmax:12,vmin:-12,iref:.005,pref:1,rspan:[200,10000],nodes,edges};
+}
+const amOut=s=>solve(ampCircuit(s)).v.o;
+const av=x=>volts(+(Math.abs(x)<5e-3?0:x).toFixed(2));
+const open=s=>s.ref!==null||s.fb;   /* the − input has something holding it */
+const amp={
+  circuit:ampCircuit,
+  fresh:()=>({Vin:2,ref:null,fb:false,rf:null,rg:null,rin:null,slew:false,t:0,v0:0}),
+  tick(s,sol,dt){ if(!s.slew) return null; const [lo,hi]=winOf(s), R=OA.rail, o=sol.v.o, held=(o>=hi-1e-6&&hi<R)||(o<=lo+1e-6&&lo>-R); if(BC.reduced||!held) s.slew=false; else s.t+=dt; return null; },
+  busy:s=>s.slew,
+  ro:{ vin:["Input",(s,o)=>av(o.v.in)], vp:["+ input",(s,o)=>av(o.v[s.rin!==null?"gm":"i"])], vm:["− input",(s,o)=>open(s)?av(o.v.m):"—"], gap:["Gap",(s,o)=>open(s)?av(o.v[s.rin!==null?"gm":"i"]-o.v.m):"—"], out:["Output",(s,o)=>av(o.v.o)] },
+  val:{out:(s,o)=>o.v.o},
+  fail:{},
+  alt:(s,o)=>`op amp, + input ${av(o.v[s.rin!==null?"gm":"i"])}, ${open(s)?"− input "+av(o.v.m):"− input not held"}, output ${av(o.v.o)}, rails ±${OA.rail} volts.`
+};
+const lift=s=>{ s.v0=amOut(s); s.t=0; s.slew=true; };
+
 BC.LESSONS={
  1:{
   xp:40, widget:loop, hotspot:{a:"sa",b:"sb"},
@@ -1351,6 +1396,57 @@ BC.LESSONS={
     {eq:"Vripple ≈ I / (f · C)",what:"Half-wave ripple; full-wave halves it",step:6,need:["hitC","hitI","hitRip"],show:v=>`${amps(v.hitI)} / (${PW.f} Hz × ${fmt(v.hitC,"F")}) = ${volts(+(v.hitI/(PW.f*v.hitC)).toFixed(2))}, you read ${volts(+v.hitRip.toFixed(2))}`},
     {f:0,step:8,need:["vin","iout"],show:v=>`(${volts(+v.vin.toFixed(1))} − ${PW.Vreg} V) × ${amps(v.iout)} = ${watts((v.vin-PW.Vreg)*v.iout)}`},
     {f:1,step:8,need:["vin"],show:v=>`${PW.Vreg} V / ${volts(+v.vin.toFixed(1))} = ${Math.round(PW.Vreg/v.vin*100)}%`}
+   ]
+  }
+ }
+ ,
+ 15:{
+  xp:40, widget:amp,
+  steps:[
+   {id:"slam",kind:"predict",prompt:"Nudge the + input 0.01 V above the − input. The output...?",
+    insight:"A hair of difference, and the output ran to the rail. Nothing was there to level the inputs.",
+    setup:s=>{s.ref=2;s.Vin=2;}, ro:["vp","vm","gap","out"], cols:3,
+    choices:[{t:"Rises a hair"},{t:"Slams to the top rail",ok:1},{t:"Falls a hair"}],
+    reveal:s=>{lift(s);s.Vin=2.01;}, settled:s=>!s.slew},
+   {id:"down",kind:"do",prompt:"Slide the + input to just below the − input.",
+    insight:"Below by a hair, the output sinks to the bottom rail. The sign of the gap picks the rail.",
+    setup:s=>{s.ref=2;s.Vin=2;}, ro:["vp","vm","gap","out"], sliders:[{k:"Vin",label:"+ input",min:1.9,max:2.1,step:.01,fmt:s=>s.Vin.toFixed(2)+" V"}],
+    goal:(s,o)=>s.Vin<2&&o.v.o<=-OA.rail+.01},
+   {id:"follow",kind:"predict",prompt:"Wire the output to the − input. Where does it settle?",
+    insight:"It fell until both inputs were level. With a bare wire in the loop, that means copying the input.",
+    setup:s=>{s.Vin=3;}, ro:["vp","vm","out"], cols:3,
+    choices:[{t:"Stays at the rail"},{t:"Drops to the input's height",ok:1},{t:"Drops to the floor"}],
+    reveal:s=>{lift(s);s.fb=true;}, settled:s=>!s.slew},
+   {id:"track",kind:"do",prompt:"Drag the input below the floor. Watch the output.",
+    insight:"Below the glass, the output still sits level with the input. The rule has no floor.",
+    setup:s=>{s.Vin=3;s.fb=true;}, ro:["vp","vm","out"], sliders:[{k:"Vin",label:"Input",min:-6,max:6,step:.5,fmt:s=>s.Vin.toFixed(1)+" V",grip:{node:"in"}}],
+    goal:s=>s.Vin<=-3, keep:(s,v)=>{v.fIn=s.Vin;v.fOut=amOut(s);}},
+   {id:"divide",kind:"predict",prompt:"Equal resistors now split the feedback. With 2 V in, output goes...?",
+    insight:"The tap sits at half the output's height, so the output had to climb to twice the input.",
+    setup:s=>{s.Vin=2;s.fb=true;s.gr=true;}, ro:["vp","vm","out"], cols:2,
+    choices:[{t:"Stays at 2 V"},{t:"Rises to 4 V",ok:1},{t:"Falls to 1 V"},{t:"Hits the rail"}],
+    reveal:s=>{lift(s);s.rf=1000;s.rg=1000;}, settled:s=>!s.slew},
+   {id:"gain",kind:"hit",prompt:"Slide Rf until the output reaches 5 V.",
+    insight:"A taller Rf makes the output climb higher before the tap reaches the input's height.",
+    setup:s=>{s.Vin=1;s.fb=true;s.rf=1000;s.rg=1000;}, ro:["vp","vm","out"], sliders:[{k:"rf",label:"Rf",log:[500,7000],fmt:s=>fmt(s.rf,"Ω"),grip:{edge:"Rf"}}],
+    target:{of:"out",to:5,tol:.02,show:volts}, keep:(s,v)=>{v.nRf=s.rf;v.nRg=s.rg;v.nIn=s.Vin;v.nOut=amOut(s);}},
+   {id:"invert",kind:"predict",prompt:"The + input sits on the floor. Raise the input to +2 V. Output goes...?",
+    insight:"The output sank below the floor just far enough to hold the − input level with the floor.",
+    setup:s=>{s.Vin=0;s.fb=true;s.rin=1000;s.rf=2000;}, ro:["vin","vm","out"], cols:2,
+    choices:[{t:"Up to +4 V"},{t:"Down to −4 V",ok:1},{t:"Stays on the floor"},{t:"Down to −2 V"}],
+    reveal:s=>{lift(s);s.Vin=2;}, settled:s=>!s.slew, keep:(s,v)=>{v.iIn=s.Vin;v.iRin=s.rin;v.iRf=s.rf;v.iOut=amOut(s);}},
+   {id:"clip",kind:"do",prompt:"Raise the input until the output stops following.",
+    insight:"The output hit its rail and could climb no further, so the inputs parted.",
+    setup:s=>{s.Vin=2;s.fb=true;s.rf=2000;s.rg=1000;}, ro:["vp","vm","gap","out"], sliders:[{k:"Vin",label:"Input",min:0,max:5,step:.1,fmt:s=>s.Vin.toFixed(1)+" V",grip:{node:"in"}}],
+    goal:(s,o)=>o.v.i-o.v.m>=.49, keep:(s,v)=>{v.cIn=s.Vin;v.cGap=Math.max(0,s.Vin-OA.rail/3);}}
+  ],
+  end:{
+   prompt:"These are the rules. Every number is yours.",
+   rows:[
+    {eq:"Vout = Vin",what:"Follower: output level with the input",step:4,need:["fIn","fOut"],show:v=>`${volts(v.fIn)} in, ${av(v.fOut)} out`},
+    {eq:"Vout = Vin (1 + Rf / Rg)",what:"Non-inverting: tap level with the input",step:6,need:["nRf","nRg","nIn","nOut"],show:v=>`${volts(v.nIn)} × (1 + ${fmt(v.nRf,"Ω")} / ${fmt(v.nRg,"Ω")}) = ${av(v.nIn*(1+v.nRf/v.nRg))}, you read ${av(v.nOut)}`},
+    {eq:"Vout = −Vin · Rf / Rin",what:"Inverting: − input held level with the floor",step:7,need:["iIn","iRin","iRf","iOut"],show:v=>`−${volts(v.iIn)} × ${fmt(v.iRf,"Ω")} / ${fmt(v.iRin,"Ω")} = ${av(-v.iIn*v.iRf/v.iRin)}, you read ${av(v.iOut)}`},
+    {eq:"|Vout| ≤ rail",what:"At the rail the inputs stop being level",step:8,need:["cIn","cGap"],show:v=>`${volts(v.cIn)} in wants ${volts(v.cIn*3)}; the rail holds ${volts(OA.rail)}; gap ${av(v.cGap)}`}
    ]
   }
  }

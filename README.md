@@ -91,6 +91,8 @@ Parts with memory are companion models. `capacitor` holds `v0`, draws as a glass
 
 `diode` takes `Vf`, `Ron`, optional `Vz` (breakdown), `dead` (burnt open) and `col`/`k` (LED light). `bjt` takes `base`, the edge whose flow sets it, with `hFE`, `Vsat`, `Rsat`, `Imax`. `mosfet` takes `ctl`, the node whose height sets it, with `Vth`, `k`, `Imax`. Both draw a gate blade and a dashed control line. `stray` is a weak source (`G`, `V`) standing in for a floating gate.
 
+`opamp` is a tall tower from the floor to the output, stiff (1 mΩ) and set by `flip` with a secant on the whole circuit so the two inputs `ctl` and `ctl2` come out level; `lo` and `hi` clamp it to the rails (±9 V, gain 1e5, no input current), and both inputs draw dashed control lines.
+
 `ldo` is an ideal linear regulator: `Vreg`, `Vdo`, `Rdo` and `Iset` (the load's flow); it passes `Iset` from input to output until headroom falls under `Vdo`, and its glow is (Vin - Vout) x I. The AC source is a `source` whose `V` the widget sets each step; `trace.pts2` adds a dashed second line.
 
 A description with `live: true` runs on its own clock: heights follow the model without the spring, and `vmax` may change, in which case the scale eases and the back walls relabel. `clock: {t, scale}` prints the time and how much it is slowed; `trace: {label, pts, tMax, yMax, guides, ticks, side}` plots a run. A widget with time adds `running(s)` and `quantum(s)`; under reduced motion the engine calls `tick` with one quantum every 650 ms.
