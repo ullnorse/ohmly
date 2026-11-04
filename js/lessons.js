@@ -14,6 +14,8 @@ const BC=window.BC, {$,$$,esc,S,css,clamp,fmt}=BC, {txt}=BC.draw;
 const WIRE_G=1e5;   /* 10 µΩ: wires drop next to nothing, and their current stays known */
 const HOLD_H=1e-9;   /* the step of an instantaneous solve */
 const TYPES={
+  /* leaks a stray source in through G, drawn as nothing */
+  stray:{g:e=>e.G,j:e=>e.G*e.V,solid:()=>{},symbol:()=>{}},
   wire:{g:e=>e.ghost?0:WIRE_G, solid:c=>c.run({hw:c.e.hw}), symbol:c=>c.line()},
   resistor:{g:e=>e.open||e.ghost?0:1/e.R, solid:solidResistor, symbol:symResistor},
   switch:{g:e=>e.closed?WIRE_G:e.Roff?1/e.Roff:0, solid:solidSwitch, symbol:symSwitch},
@@ -21,8 +23,22 @@ const TYPES={
   source:{solid:solidSource, symbol:symSource},
   capacitor:{tall:true, g:(e,h)=>e.C/h, j:(e,h)=>-e.C/h*(e.v0||0), commit:(e,v)=>{ e.v0=v[e.a]-v[e.b]; }, solid:c=>c.tank(), symbol:symCap},
   inductor:{g:(e,h)=>h/e.L, j:e=>e.i0||0, commit:(e,v,I)=>{ e.i0=I[e.id]; }, solid:c=>c.wheel(), symbol:symCoil},
-  /* an ideal drop Vf in series with Ron when on; open when off */
-  diode:{g:e=>!e.ghost&&e.on?1/e.Ron:0, j:e=>!e.ghost&&e.on?-e.Vf/e.Ron:0, flip:(e,v,I)=>{ if(e.ghost) return false; const on=e.on?I[e.id]>0:v[e.a]-v[e.b]>e.Vf; if(on===!!e.on) return false; e.on=on; return true; }, solid:solidDiode, symbol:symDiode}
+  /* an ideal drop Vf in series with Ron when on; open when off. A part with Vz also breaks down in reverse (on === "z") and holds Vz. dead = burnt open. */
+  diode:{hot:1, g:e=>!e.ghost&&!e.dead&&e.on?1/e.Ron:0, j:e=>e.ghost||e.dead||!e.on?0:e.on==="z"?e.Vz/e.Ron:-e.Vf/e.Ron,
+    flip:(e,v,I)=>{ if(e.ghost||e.dead) return false; const vd=v[e.a]-v[e.b], was=e.on||false; let on=false;
+      if(was===true) on=I[e.id]>0; else if(was==="z") on=I[e.id]<0?"z":false; else if(vd>e.Vf) on=true; else if(e.Vz&&vd<-e.Vz) on="z";
+      if(on===was) return false; e.on=on; return true; }, solid:solidDiode, symbol:symDiode, light:e=>e.col?{c:e.col,k:e.k}:null},
+  /* an NPN-style gate on the slope: the base current (the flow in edge e.base) sets Ic = hFE x Ib until the gate is wide open (sat) */
+  bjt:{hot:1, ctl:1, g:e=>e.sat?1/e.Rsat:0, j:e=>e.sat?-e.Vsat/e.Rsat:(e.Ic||0),
+    flip:(e,v,I)=>{ const ic=e.hFE*Math.max(0,I[e.base]); if(Math.abs(ic-(e.Ic||0))>1e-9){ e.Ic=ic; return true; }
+      if(!e.sat){ if(ic>0&&v[e.a]-v[e.b]<e.Vsat){ e.sat=true; return true; } return false; }
+      if(I[e.id]>ic){ e.sat=false; return true; } return false; },
+    gate:(e,I)=>clamp(Math.abs(I)/e.Imax,0,1), solid:solidGate, symbol:symBjt},
+  /* a gate by height alone: off below Vth, then a current source k(Vgs-Vth)^2 that falls into a plain channel (2k(Vgs-Vth) siemens) */
+  mosfet:{hot:1, ctl:1, g:e=>e.m==="tri"?e.Gon:0, j:e=>e.m==="act"?e.Ic:0,
+    flip:(e,v)=>{ const vov=v[e.ctl]-v[e.b]-e.Vth; let m="off", ic=0, gon=0; if(vov>0){ ic=e.k*vov*vov; gon=2*e.k*vov; m=v[e.a]-v[e.b]<vov?"tri":"act"; }
+      const ch=m!==e.m||Math.abs(ic-(e.Ic||0))>1e-9; e.m=m; e.Ic=ic; e.Gon=gon; return ch; },
+    gate:(e,I)=>clamp(Math.abs(I)/e.Imax,0,1), solid:solidGate, symbol:symMos}
 };
 /* modified nodal analysis; a tiny leak to ground puts floating nodes on the floor */
 function solve(d){
@@ -95,6 +111,20 @@ function solidFuse(c){
   c.run(); c.capsule(.2,.8);
 }
 function solidSource(c){ c.tower(); }
+/* a gate on the slope: stubs at each level and a blade that lifts as the gate opens; the glow is its own heat */
+function solidGate(c){ const o={heat:c.glow*.9}; c.stub(0,.28,o); c.stub(.72,1,o); c.plank(.28,.72,c.swing,c.glow*.9); }
+function symBjt(c){
+  const {g,p}=c, a=p[0], b=p[p.length-1], x=(a[0]+b[0])/2, y=(a[1]+b[1])/2, r=16, ux=(b[0]-a[0]), uy=(b[1]-a[1]), an=Math.atan2(uy,ux)-Math.PI/2, P=PAL;
+  g.strokeStyle=P.inkS; g.lineWidth=2.5; g.lineJoin="round"; g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke();
+  g.save(); g.translate(x,y); g.rotate(an); g.fillStyle=P.bgS; g.beginPath(); g.arc(0,0,r,0,7); g.fill(); g.stroke();
+  g.beginPath(); g.moveTo(-7,-9); g.lineTo(-7,9); g.moveTo(-7,-4); g.lineTo(0,-11); g.moveTo(-7,4); g.lineTo(0,11); g.stroke();
+  g.fillStyle=P.inkS; g.beginPath(); g.moveTo(0,11); g.lineTo(-6,9.5); g.lineTo(-2,5.5); g.closePath(); g.fill(); g.restore();
+}
+function symMos(c){
+  const {g,p}=c, a=p[0], b=p[p.length-1], x=(a[0]+b[0])/2, y=(a[1]+b[1])/2, an=Math.atan2(b[1]-a[1],b[0]-a[0])-Math.PI/2, P=PAL;
+  g.strokeStyle=P.inkS; g.lineWidth=2.5; g.lineJoin="round"; g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke();
+  g.save(); g.translate(x,y); g.rotate(an); g.fillStyle=P.bgS; g.fillRect(-14,-15,22,30); g.beginPath(); g.moveTo(-9,-10); g.lineTo(-9,10); g.moveTo(-3,-10); g.lineTo(-3,-6); g.moveTo(-3,-3); g.lineTo(-3,3); g.moveTo(-3,6); g.lineTo(-3,10); g.moveTo(-3,-8); g.lineTo(0,-8); g.moveTo(-3,8); g.lineTo(0,8); g.moveTo(-3,0); g.lineTo(0,0); g.stroke(); g.restore();
+}
 function solidDiode(c){ c.run({hw:c.e.hw||HW*.62}); c.chevron(); }
 function symCap(c){
   const {g,p}=c, a=p[0], b=p[p.length-1], x=(a[0]+b[0])/2, y=(a[1]+b[1])/2, P=PAL;
@@ -108,7 +138,8 @@ function symCoil(c){
 function symDiode(c){
   const {g,p}=c, P=PAL; let a=p[0], b=p[1], best=0; for(let i=0;i<p.length-1;i++){ const l=Math.hypot(p[i][0]-p[i+1][0],p[i][1]-p[i+1][1]); if(l>best){ best=l; a=p[i]; b=p[i+1]; } }
   g.strokeStyle=P.inkS; g.lineWidth=2.5; g.lineJoin="round"; g.beginPath(); p.forEach((q,i)=>i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1])); g.stroke();
-  const x=(a[0]+b[0])/2, y=(a[1]+b[1])/2, an=Math.atan2(b[1]-a[1],b[0]-a[0]), s=9; g.save(); g.translate(x,y); g.rotate(an); g.fillStyle=P.bgS; g.fillRect(-s-2,-s-1,2*s+4,2*s+2); g.fillStyle=P.inkS; g.beginPath(); g.moveTo(-s,-s); g.lineTo(s,0); g.lineTo(-s,s); g.closePath(); g.fill(); g.beginPath(); g.moveTo(s,-s); g.lineTo(s,s); g.stroke(); g.restore();
+  const x=(a[0]+b[0])/2, y=(a[1]+b[1])/2, an=Math.atan2(b[1]-a[1],b[0]-a[0]), s=9; g.save(); g.translate(x,y); g.rotate(an); g.fillStyle=P.bgS; g.fillRect(-s-2,-s-1,2*s+4,2*s+2); g.fillStyle=P.inkS; g.beginPath(); g.moveTo(-s,-s); g.lineTo(s,0); g.lineTo(-s,s); g.closePath(); g.fill(); g.beginPath(); g.moveTo(s,-s); g.lineTo(s,s); if(c.e.Vz){ g.moveTo(s,-s); g.lineTo(s-4,-s-3.5); g.moveTo(s,s); g.lineTo(s+4,s+3.5); } g.stroke();
+  if(c.e.col){ g.lineWidth=2; [-3,5].forEach(o=>{ g.beginPath(); g.moveTo(o,-s-5); g.lineTo(o+9,-s-14); g.moveTo(o+9,-s-14); g.lineTo(o+3.5,-s-13.5); g.moveTo(o+9,-s-14); g.lineTo(o+8.5,-s-8.5); g.stroke(); }); } g.restore();
 }
 function symResistor(c){
   const {g,e,p}=c, a=p[0], b=p[p.length-1], P=PAL;
@@ -169,8 +200,9 @@ function Terrain(stage){
   T.set=desc=>{ T.desc=desc; T.sol=solve(desc); if(T.vm===null||!desc.live) T.vm=desc.vmax||18; if(BC.reduced||!Object.keys(T.zs).length) settle();
     desc.edges.forEach(e=>{ if(e.t==="switch"){ const was=T.prev[e.id]; if(was===false&&e.closed&&!BC.reduced) T.rings.push({a:e.a,b:e.b,t:0,dur:.45,r:.34}); T.prev[e.id]=!!e.closed; } });
     return T.sol; };
-  const settle=()=>{ const D=T.desc; T.vm=D.vmax||18; for(const k in T.sol.v){ T.zs[k]=T.sol.v[k]; T.zv[k]=0; } for(const e of D.edges){ T.heat[e.id]=heatTarget(e); T.flow[e.id]=Math.abs(T.sol.I[e.id]||0); T.pres[e.id]=e.ghost?0:1; T.swing[e.id]=e.closed?0:1; } };
-  const heatTarget=e=>{ if(e.t!=="resistor"||e.open||e.ghost) return 0; const I=T.sol.I[e.id]; return I*I*e.R/(e.rating||T.desc.pref||2); };
+  const swing0=e=>{ const P=TYPES[e.t]; return P.gate?1-P.gate(e,T.sol.I[e.id]||0):e.closed?0:1; };
+  const settle=()=>{ const D=T.desc; T.vm=D.vmax||18; for(const k in T.sol.v){ T.zs[k]=T.sol.v[k]; T.zv[k]=0; } for(const e of D.edges){ T.heat[e.id]=heatTarget(e); T.flow[e.id]=Math.abs(T.sol.I[e.id]||0); T.pres[e.id]=e.ghost?0:1; T.swing[e.id]=swing0(e); } };
+  const heatTarget=e=>{ if(e.open||e.ghost||e.dead) return 0; const I=T.sol.I[e.id]; if(e.t==="resistor") return I*I*e.R/(e.rating||T.desc.pref||2); if(TYPES[e.t].hot){ const v=T.sol.v; return Math.abs(I*(v[e.a]-v[e.b]))/(e.rating||T.desc.pref||2); } return 0; };
   /* everything comes up out of the floor when the picture first appears */
   T.rise=()=>{ if(!BC.reduced) T.pres={}; };
   T.setView=v=>{ viewPref=v; T.target=v==="height"?0:1; if(BC.reduced) T.m=T.target; };
@@ -219,15 +251,16 @@ function Terrain(stage){
   /* the per-edge handle that TYPES draw through */
   function context(e,polyInfo,g){
     const {poly,run}=polyInfo, pr=T.pres[e.id]===undefined?1:T.pres[e.id], D=T.desc;
-    const c={e,g,poly,font:FONT.display,pres:pr,swing:T.swing[e.id]===undefined?(e.closed?0:1):T.swing[e.id],glow:0,chute:HW};
-    if(e.t==="resistor"){ const h=T.heat[e.id]||0; c.glow=Math.sqrt(h)*(h>1?1+.09*Math.sin(T.clock*34):1); if(T.flash>0&&T.flashId===e.id) c.glow=Math.max(c.glow,1+T.flash);
-      if(D.rspan&&!e.inner){ const [lo,hi]=D.rspan, f=clamp(Math.log(e.R/lo)/Math.log(hi/lo),0,1); c.chute=HW*(1-.56*f); } }
+    const c={e,g,poly,font:FONT.display,pres:pr,swing:T.swing[e.id]===undefined?swing0(e):T.swing[e.id],glow:0,chute:HW};
+    c.at=id=>T.nodeAt(id);
+    if(e.t==="resistor"||TYPES[e.t].hot){ const h=T.heat[e.id]||0; c.glow=Math.sqrt(h)*(h>1?1+.09*Math.sin(T.clock*34):1); if(T.flash>0&&T.flashId===e.id) c.glow=Math.max(c.glow,1+T.flash);
+      if(e.t==="resistor"&&D.rspan&&!e.inner){ const [lo,hi]=D.rspan, f=clamp(Math.log(e.R/lo)/Math.log(hi/lo),0,1); c.chute=HW*(1-.56*f); } }
     c.stream=gg=>streamOf(gg,e,polyInfo);
     c.run=o=>{ for(let i=0;i<run.length-1;i++) boxes.push(mkBox(e.id+":"+i,run[i],run[i+1],o)); if(e.via) for(let i=1;i<run.length-1;i++){ const q=run[i], w=(o&&o.hw)||HW; boxes.push(mkBox(e.id+":c"+i,{...q,u:q.u-w},{...q,u:q.u+w},{...o,hw:w})); } };
     c.stub=(t0,t1,o={})=>{ const A=run[0], B=run[run.length-1], z=t0<.5?A.z:B.z; boxes.push(mkBox(e.id+":s"+t0,{...lerpP(A,B,t0),z},{...lerpP(A,B,t1),z},o)); };
     /* the blade hangs from the live side when open and swings up to meet the far side when closed */
-    c.plank=(t0,t1,sw)=>{ const A=run[0], B=run[run.length-1], zh=A.z, P0={...lerpP(A,B,t0),z:zh}, full=lerpP(A,B,t1), an=sw*1.25, L=Math.hypot(full.u-P0.u,full.v-P0.v), cosA=Math.cos(an), P1={...lerpP(P0,full,cosA),z:0};
-      P1.z=Math.max(0,zh+(B.z-zh)*(1-sw)-Math.sin(an)*L*geo.sc/geo.hs); boxes.push(mkBox(e.id+":p",P0,P1,{style:"tower",hw:HW*.72})); };
+    c.plank=(t0,t1,sw,heat)=>{ const A=run[0], B=run[run.length-1], zh=A.z, P0={...lerpP(A,B,t0),z:zh}, full=lerpP(A,B,t1), an=sw*1.25, L=Math.hypot(full.u-P0.u,full.v-P0.v), cosA=Math.cos(an), P1={...lerpP(P0,full,cosA),z:0};
+      P1.z=Math.max(0,zh+(B.z-zh)*(1-sw)-Math.sin(an)*L*geo.sc/geo.hs); boxes.push(mkBox(e.id+":p",P0,P1,{style:"tower",hw:HW*.72,heat:heat||0})); };
     c.capsule=(t0,t1)=>{ const A=lerpP(run[0],run[run.length-1],t0), B=lerpP(run[0],run[run.length-1],t1), lift=9/geo.hs*pr; boxes.push(mkBox(e.id+":f",{...A,z:A.z+lift},{...B,z:B.z+lift},{style:"tower",hw:HW*.62,base:A.z})); };
     c.tower=()=>{ const n=D.nodes[e.a].at, s=e.box||HW, z=(T.zs[e.b]||0)*pr, Fa=nodeF(D.nodes[e.a]), Fb=nodeF(D.nodes[e.b]);
       const mkP=(u)=>({u,v:n[1],z,fu:(Fa[0]+Fb[0])/2,fv:(Fa[1]+Fb[1])/2});
@@ -238,7 +271,7 @@ function Terrain(stage){
     c.wheel=()=>{ c.run({hw:e.hw,after:gg=>wheel(gg,e,run)}); };
     /* the diode's arrow, once, on its longest run */
     c.chevron=()=>{ let box=null, best=0; boxes.forEach(b=>{ if(b.id.startsWith(e.id+":")){ const l=Math.hypot(b.A.u-b.B.u,b.A.v-b.B.v); if(l>best){ best=l; box=b; } } }); if(!box) return;
-      box.after=gg=>{ const mid=lerpP(box.A,box.B,.5), dir=box.B.u>box.A.u?1:-1, S=HW*.55, q=(du,dv)=>iso(mid.u+du,mid.v+dv,mid.z), a=q(-dir*S,-S), m=q(dir*S,0), b=q(-dir*S,S), a2=q(dir*S,-S), b2=q(dir*S,S); gg.fillStyle=PAL.inkS; gg.beginPath(); gg.moveTo(a[0],a[1]); gg.lineTo(m[0],m[1]); gg.lineTo(b[0],b[1]); gg.closePath(); gg.fill(); gg.strokeStyle=PAL.inkS; gg.lineWidth=2.5; gg.beginPath(); gg.moveTo(a2[0],a2[1]); gg.lineTo(b2[0],b2[1]); gg.stroke(); }; };
+      box.after=gg=>{ const mid=lerpP(box.A,box.B,.5), du=box.B.u-box.A.u, dv=box.B.v-box.A.v, L=Math.hypot(du,dv)||1, X=du/L, Y=dv/L, S=HW*.55, q=(f,s)=>iso(mid.u+X*f*S-Y*s*S,mid.v+Y*f*S+X*s*S,mid.z), a=q(-1,-1), m=q(1,0), b=q(-1,1), a2=q(1,-1), b2=q(1,1); gg.fillStyle=PAL.inkS; gg.beginPath(); gg.moveTo(a[0],a[1]); gg.lineTo(m[0],m[1]); gg.lineTo(b[0],b[1]); gg.closePath(); gg.fill(); gg.strokeStyle=PAL.inkS; gg.lineWidth=2.5; gg.beginPath(); gg.moveTo(a2[0],a2[1]); gg.lineTo(b2[0],b2[1]); gg.stroke(); }; };
     return c;
   }
   function glass(g,e,n,s,z){
@@ -352,7 +385,7 @@ function Terrain(stage){
   /* power lights the floor around a hot slope */
   function drawGlows(g,items){
     if(M>=1) return; const P=PAL;
-    items.forEach(({e,info})=>{ if(e.t!=="resistor"||e.open||e.ghost) return; const h=T.heat[e.id]||0, i=Math.min(1.3,Math.sqrt(h)*(T.flash>0&&T.flashId===e.id?2:1)); if(i<.08) return;
+    items.forEach(({e,info})=>{ if(e.t!=="resistor"&&!TYPES[e.t].hot||e.open||e.ghost||e.dead) return; const h=T.heat[e.id]||0, i=Math.min(1.3,Math.sqrt(h)*(T.flash>0&&T.flashId===e.id?2:1)); if(i<.08) return;
       const A=info.run[0], B=info.run[info.run.length-1], mid=lerpP(A,B,.5), c=iso(mid.u+.1,mid.v+.1,0), a=iso(A.u,A.v,0), b=iso(B.u,B.v,0), L=Math.hypot(a[0]-b[0],a[1]-b[1])*.72+24, an=Math.atan2(b[1]-a[1],b[0]-a[0]);
       g.save(); g.globalCompositeOperation=P.dark?"lighter":"source-over"; g.translate(c[0],c[1]); g.rotate(an); g.scale(L,Math.max(26,geo.sc*.16));
       const gr=g.createRadialGradient(0,0,0,0,0,1), col=i>1?mix(P.accent,P.hot,Math.min(1,i-1)):P.accent; gr.addColorStop(0,rgb(col,Math.min(.55,i*(P.dark?.5:.36))*(1-M))); gr.addColorStop(1,rgb(col,0)); g.fillStyle=gr; g.beginPath(); g.arc(0,0,1,0,7); g.fill(); g.restore(); });
@@ -413,6 +446,17 @@ function Terrain(stage){
     g.globalAlpha=1; g.lineCap="butt";
     /* no motion to read direction from: arrows */
     if(BC.reduced&&walk.length>1){ const a=walk[0], b=walk[walk.length-1], mid=lerpP(a,b,.5), p=T.project(mid,M), q=T.project(b,M), an=Math.atan2(q[1]-p[1],q[0]-p[0]), s=clamp(4+w*sc*.7,5,16); g.save(); g.translate(p[0],p[1]); g.rotate(an); g.fillStyle=P.accentS; g.strokeStyle=P.bgS; g.lineWidth=1.5; g.beginPath(); g.moveTo(s,0); g.lineTo(-s*.7,-s*.7); g.lineTo(-s*.7,s*.7); g.closePath(); g.stroke(); g.fill(); g.restore(); }
+  }
+  /* a dashed line from the control node, at its own height, to the gate on the slope */
+  function drawTies(g,items){
+    items.forEach(({e,info})=>{ if(!TYPES[e.t].ctl||e.ghost) return; const A=info.run[0], B=info.run[info.run.length-1], q=T.nodeAt(e.ctl), m=T.project(lerpP(A,B,.5),M); g.save(); g.strokeStyle=PAL.mutedS; g.lineWidth=1.8; g.setLineDash([5,4]); g.beginPath(); g.moveTo(q[0],q[1]); g.lineTo(m[0],m[1]); g.stroke(); g.restore(); });
+  }
+  /* an LED's light: a bulb on the ledge and a halo that follows the flow */
+  function drawLights(g,items){
+    const P=PAL; items.forEach(({e,info})=>{ const L=TYPES[e.t].light&&TYPES[e.t].light(e); if(!L||e.ghost||(T.pres[e.id]===undefined?1:T.pres[e.id])<.5) return;
+      const A=info.run[0], B=info.run[info.run.length-1], mid=lerpP(A,B,.5), p=T.project({...mid,z:mid.z+(1-M)*0},M), I=Math.abs(T.sol.I[e.id]||0), lit=e.dead?0:clamp(I/.02,0,1.4)*(L.k===undefined?1:L.k), R=clamp(geo.sc*.045,8,13), cy=p[1]-(1-M)*(R+HW*geo.sc*.5);
+      if(lit>.03){ const H=R*(3+5*Math.min(lit,1.2)); g.save(); g.globalCompositeOperation=P.dark?"lighter":"source-over"; const gr=g.createRadialGradient(p[0],cy,0,p[0],cy,H); gr.addColorStop(0,rgb(L.c,Math.min(.75,.25+lit*.5))); gr.addColorStop(1,rgb(L.c,0)); g.fillStyle=gr; g.beginPath(); g.arc(p[0],cy,H,0,7); g.fill(); g.restore(); }
+      g.beginPath(); g.arc(p[0],cy,R,0,7); g.fillStyle=lit>.03?rgb(mix(P.dark?[40,40,40]:[235,235,235],L.c,Math.min(1,.35+lit*.8))):P.bgS; g.fill(); g.lineWidth=2; g.strokeStyle=lit>.03?rgb(L.c):P.mutedS; g.stroke(); });
   }
   function drawGhosts(g,items){
     const P=PAL; items.forEach(({e,info})=>{ const pr=T.pres[e.id]===undefined?1:T.pres[e.id]; if(pr>=.98||e.t==="source") return; const a=info.run[0], b=info.run[info.run.length-1], du=b.u-a.u, dv=b.v-a.v, L=Math.hypot(du,dv); if(L<1e-6) return; const nu=-dv/L*HW, nv=du/L*HW, q=[[a,nu,nv],[b,nu,nv],[b,-nu,-nv],[a,-nu,-nv]].map(([p,x,y])=>corner({...p,z:0},x,y,0));
@@ -507,7 +551,7 @@ function Terrain(stage){
     D.edges.forEach(e=>{ const h=T.heat[e.id]||0, ht=heatTarget(e); T.heat[e.id]=h+(ht-h)*Math.min(1,dt*(ht>h?2.8:4.5));
       const Ia=Math.abs(T.sol.I[e.id]||0), f=T.flow[e.id]===undefined?0:T.flow[e.id]; T.flow[e.id]=D.live?Ia:Ia<1e-9&&f<(D.iref||.05)*.002?0:f+(Ia-f)*Math.min(1,dt*7);
       const pt=e.ghost?0:1, p=T.pres[e.id]===undefined?0:T.pres[e.id]; T.pres[e.id]=p<pt?Math.min(pt,p+dt*2.1):Math.max(pt,p-dt*3);
-      if(e.t==="switch"){ const sw=T.swing[e.id]===undefined?(e.closed?0:1):T.swing[e.id], tg=e.closed?0:1; T.swing[e.id]=sw<tg?Math.min(tg,sw+dt*5):Math.max(tg,sw-dt*7); } });
+      if(e.t==="switch"||TYPES[e.t].gate){ const sw=T.swing[e.id]===undefined?swing0(e):T.swing[e.id], tg=swing0(e); T.swing[e.id]=sw<tg?Math.min(tg,sw+dt*5):Math.max(tg,sw-dt*7); } });
   }
   T.frame=dt=>{
     if(!T.desc||!cv.offsetParent) return;
@@ -533,8 +577,10 @@ function Terrain(stage){
     solidA=1-clamp((M-.55)/.4,0,1);
     if(solidA>0){ g.globalAlpha=solidA; orderBoxes().forEach(i=>drawBox(g,boxes[i])); g.globalAlpha=1; }
     drawGapMarks(g,items);
+    drawTies(g,items);
     if(M>.3){ g.globalAlpha=clamp((M-.3)/.45,0,1); items.forEach(it=>{ it.c.p=it.info.full.map(q=>T.project(q,M)); it.c.line=()=>{ g.strokeStyle=PAL.inkS; g.lineWidth=2.5; g.lineJoin="round"; g.beginPath(); it.c.p.forEach((q,i)=>i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1])); g.stroke(); }; if(!it.e.ghost) TYPES[it.e.t].symbol(it.c); }); g.globalAlpha=1; }
     items.forEach(({e,info})=>{ if(!e.inner) streamOf(g,e,info); });
+    drawLights(g,items);
     drawNodeMarks(g);
     drawLeads(g);
     items.forEach(({e,info})=>{ if(!e.tag||(e.t==="source"&&M<.6)) return; const b=e.tagAt==="a"?info.full[0]:info.full[info.full.length-1], p=T.project(b,M), o=e.tagOff||[0,-14], f=e.tagf||o; tag(g,e.tag,p[0]+o[0]+(f[0]-o[0])*M,p[1]+o[1]+(f[1]-o[1])*M,e.tagc?P[e.tagc+"S"]:P.inkS,labelPx(clamp(geo.sc*.058,13,18)),e.align||"center",600); });
@@ -733,6 +779,121 @@ const timed={
   alt:(s,o)=>s.shape==="rc"?`time ${secs(s.t)}, tank level ${volts(s.vc)} of ${s.V} volts, flow ${amps(o.I.R)}, ${s.R} ohms, ${fmt(s.C,"F")}.`:`time ${secs(s.t)}, ${s.slow} times slower, switch ${s.closed?"closed":"open"}, flow ${amps(o.I.R)}, height at the gap ${volts(s.gapV)}.`
 };
 
+/* ---------- modules 6-8: a one-way ledge, a gate on the slope, and light ----------
+   Stated models. Diode: a fixed step Vf (silicon 0.7 V, Schottky 0.32 V, LED by colour) then 0.01 Ω; a Zener also holds 5.1 V in reverse. Reversing the battery is drawn as the diode facing the other way.
+   BJT: Ic = 100 x Ib until the load limits it; fully open it keeps 0.2 V and 0.1 Ω. MOSFET: off below 2 V of gate height; Ids = 0.3 (Vgs - 2)² until the channel is wide open. Gate flow is zero. A floating gate is a stray source coupled in through 1 MΩ. */
+const DI={Vf:.7,Vsch:.32,Vz:5.1,Ron:.01,Rs:220}, DKIND={si:["Silicon",DI.Vf],sch:["Schottky",DI.Vsch]};
+const stepV=(o,a,b)=>volts(+Math.abs(o.v[a]-o.v[b]).toFixed(2));
+function diodeCircuit(s){
+  const zen=s.mode==="zen", dk=DKIND[s.kind];
+  /* da, db are the diode's two ends in both layouts */
+  const nodes={g:{at:[0,.8]},e:{at:[0,.8],flat:[0,.3]},n0:{at:[0,0]},ra:{at:[zen?.14:1,0]},db:{at:[zen?.9:.9,0]},da:{at:[zen?1.8:.2,0]},rb:{at:[1.82,0]},c1:{at:[2,0]},c2:{at:[2,.8]}};
+  const src={id:"src",t:"source",a:"g",b:"e",V:s.V,box:.15,tag:s.V.toFixed(s.V%1?1:0)+" V",tagOff:[0,-12],tagf:[-30,44]};
+  const Rl=(R,lab)=>({id:"R",t:"resistor",a:"ra",b:zen?"db":"rb",R,rating:s.rate||2,label:fmt(R,"Ω"),lab:[0,.27],labf:[0,28]});
+  let edges;
+  if(zen) edges=[src,{id:"w0",t:"wire",a:"e",b:"n0"},{id:"w1",t:"wire",a:"n0",b:"ra"},Rl(s.R),
+    {id:"D",t:"diode",a:"da",b:"db",Vf:DI.Vf,Vz:DI.Vz,Ron:DI.Ron,rating:.5,label:"Zener "+DI.Vz+" V",lab:[0,.27],labf:[0,-26]},
+    {id:"w2",t:"wire",a:"da",b:"c1"},{id:"w3",t:"wire",a:"c1",b:"c2"},{id:"w4",t:"wire",a:"c2",b:"g"}];
+  else edges=[src,{id:"w0",t:"wire",a:"e",b:"n0"},{id:"w1",t:"wire",a:"n0",b:"da"},
+    {id:"D",t:"diode",a:s.rev?"db":"da",b:s.rev?"da":"db",Vf:dk[1],Ron:DI.Ron,rating:.5,label:dk[0]+" "+dk[1]+" V",lab:[0,.27],labf:[0,-26]},
+    {id:"w2",t:"wire",a:"db",b:"ra"},Rl(s.R),{id:"w3",t:"wire",a:"rb",b:"c1"},{id:"w4",t:"wire",a:"c1",b:"c2"},{id:"w5",t:"wire",a:"c2",b:"g"}];
+  return {gnd:"g",vmax:12,iref:.06,pref:s.rate||2,rspan:[10,2000],nodes,edges};
+}
+const diodeSolve=s=>solve(diodeCircuit(s));
+const diodes={
+  circuit:diodeCircuit,
+  fresh:()=>({mode:"dio",V:0,R:100,kind:"si",rev:false,rate:2,Vgoal:null,Vrate:3}),
+  tick(s,sol,dt){ if(s.Vgoal!==null){ if(BC.reduced) s.V=s.Vgoal; else { const d=dt*s.Vrate; s.V=s.V<s.Vgoal?Math.min(s.Vgoal,s.V+d):Math.max(s.Vgoal,s.V-d); } if(s.V===s.Vgoal) s.Vgoal=null; } return null; },
+  busy:s=>s.Vgoal!==null,
+  ro:{ V:["Supply",s=>volts(+s.V.toFixed(1))], I:["Flow",(s,o)=>amps(o.I.D)], drop:["Diode drop",(s,o)=>stepV(o,"da","db")], rdrop:["Across R",(s,o)=>volts(+(Math.abs(o.I.R)*s.R).toFixed(2))],
+    heat:["Diode heat",(s,o)=>watts(Math.abs(o.I.D)*Math.abs(o.v.da-o.v.db))], out:["Output",(s,o)=>volts(+o.v.db.toFixed(2))] },
+  val:{I:(s,o)=>Math.abs(o.I.D)},
+  fail:{},
+  alt:(s,o)=>s.mode==="zen"?`supply ${s.V} volts, Zener holds the output at ${volts(o.v.db)}, flow ${amps(o.I.D)}.`:`supply ${s.V} volts, ${DKIND[s.kind][0]} diode ${s.rev?"reversed":"forward"}, drop across it ${stepV(o,"da","db")}, flow ${amps(o.I.D)}.`
+};
+
+const TR={V:9,Rl:30,hFE:100,Vbe:.7,Vsat:.2,Rsat:.1,Vth:2,k:.3,Rpd:1e4,Rstray:1e6};
+const trVn=s=>Math.max(0,2.7+1.2*Math.sin(2.1*s.t)+.5*Math.sin(5.3*s.t+1));
+function transCircuit(s){
+  const mos=s.mode==="mos", Imax=mos?TR.V/(TR.Rl+.5):(TR.V-TR.Vsat)/(TR.Rl+TR.Rsat);
+  const nodes={g:{at:[0,.86]},e:{at:[0,.86],flat:[0,.3]},a:{at:[0,0]},j1:{at:[.6,0]},j2:{at:[1.5,0]},col:{at:[1.5,.4]},k1:{at:[.6,.86]},k2:{at:[1.5,.86]}};
+  const edges=[{id:"src",t:"source",a:"g",b:"e",V:TR.V,box:.15,tag:TR.V+" V",tagOff:[0,-12],tagf:[-30,44]},
+   {id:"w0",t:"wire",a:"e",b:"a"},{id:"w1",t:"wire",a:"a",b:"j1"},{id:"w2",t:"wire",a:"j1",b:"j2"},
+   {id:"RL",t:"resistor",a:"j2",b:"col",R:TR.Rl,rating:4,label:"Load "+TR.Rl+" Ω",lab:[-.27,0],labf:[-34,0]},{id:"w3",t:"wire",a:"k2",b:"k1"}];
+  if(!mos){
+    nodes.bn={at:[.6,.4]};
+    const Rb=s.Ib>0?(TR.V-TR.Vbe)/s.Ib:1e12;
+    edges.push({id:"Rb",t:"resistor",a:"j1",b:"bn",R:Rb,rating:1,label:s.Ib>0?fmt(Rb,"Ω"):"",lab:[-.27,0],labf:[-34,0]},
+      {id:"BE",t:"diode",a:"bn",b:"k1",Vf:TR.Vbe,Ron:.05,rating:1},
+      {id:"Q",t:"bjt",a:"col",b:"k2",base:"BE",ctl:"bn",hFE:TR.hFE,Vsat:TR.Vsat,Rsat:TR.Rsat,Imax,rating:.5},{id:"w4",t:"wire",a:"k1",b:"g"});
+  } else {
+    Object.assign(nodes,{kg:{at:[.25,.86]},gd:{at:[.25,.86],flat:[.25,.5]},gt:{at:[.6,.4]}});
+    const vg=s.float?trVn(s):s.Vg;
+    edges.push({id:"gs",t:"source",a:"kg",b:"gd",V:s.Vg,box:.11,tag:volts(+s.Vg.toFixed(2)),tagOff:[0,-12],tagf:[-22,30]},
+      {id:"gsw",t:"switch",a:"gd",b:"gt",closed:!s.float,},
+      {id:"PD",t:"resistor",a:"gt",b:"k1",R:TR.Rpd,ghost:!s.pd,label:fmt(TR.Rpd,"Ω"),lab:[.27,0],labf:[34,0]},
+      {id:"Q",t:"mosfet",a:"col",b:"k2",ctl:"gt",k:TR.k,Vth:TR.Vth,Imax,rating:.5},{id:"w4",t:"wire",a:"k1",b:"kg"},{id:"w5",t:"wire",a:"kg",b:"g"});
+    if(s.float) edges.push({id:"st",t:"stray",a:"kg",b:"gt",G:1/TR.Rstray,V:vg});
+  }
+  return {gnd:"g",vmax:10,iref:.15,pref:.5,rspan:[10,1e5],nodes,edges};
+}
+const trSolve=s=>solve(transCircuit(s));
+const trans={
+  circuit:transCircuit,
+  fresh:()=>({mode:"bjt",Ib:0,IbGoal:null,Vg:0,VgGoal:null,float:false,pd:false,t:0}),
+  tick(s,sol,dt){
+    if(s.IbGoal!==null){ if(BC.reduced) s.Ib=s.IbGoal; else s.Ib+=(s.IbGoal-s.Ib)*Math.min(1,dt*2.6); if(Math.abs(s.IbGoal-s.Ib)<.01*s.IbGoal) { s.Ib=s.IbGoal; s.IbGoal=null; } }
+    if(s.VgGoal!==null){ if(BC.reduced) s.Vg=s.VgGoal; else s.Vg=Math.min(s.VgGoal,s.Vg+dt*2.2); if(s.Vg===s.VgGoal) s.VgGoal=null; }
+    if(s.float&&!BC.reduced) s.t+=dt;
+    return null;
+  },
+  busy:s=>s.IbGoal!==null||s.VgGoal!==null,
+  ro:{ base:["Base flow",(s,o)=>amps(o.I.BE)], gflow:["Gate flow",(s,o)=>amps(o.I.gsw)], main:["Main stream",(s,o)=>amps(o.I.Q)],
+    vq:["Switch drop",(s,o)=>volts(+(o.v.col-o.v.k2).toFixed(2))], heat:["Switch heat",(s,o)=>fmt(Math.abs(o.I.Q)*(o.v.col-o.v.k2),"W",2)], gate:["Gate height",(s,o)=>volts(+(o.v.gt||0).toFixed(2))] },
+  val:{Ic:(s,o)=>Math.abs(o.I.Q),Vg:s=>s.Vg},
+  fail:{},
+  alt:(s,o)=>s.mode==="mos"?`MOSFET, gate height ${volts(o.v.gt||0)}${s.float?(s.pd?", floating with a pull-down":", floating"):""}, main stream ${amps(o.I.Q)}.`:`transistor, base flow ${amps(o.I.BE)}, main stream ${amps(o.I.Q)}, ${volts(o.v.col-o.v.k2)} across the switch.`
+};
+
+const LD={Ron:.5,max:.03,full:.02,eye:15}, LEDK={red:{n:"Red",vf:1.9,c:[255,59,48]},yel:{n:"Yellow",vf:2.1,c:[255,196,0]},blu:{n:"Blue",vf:3.0,c:[58,123,255]}};
+function ledCircuit(s){
+  const n=s.cols.length, us=n===3?[.6,1.3,2.0]:[1.3], nodes={g:{at:[0,.86]},e:{at:[0,.86],flat:[0,.3]},a:{at:[0,0]}};
+  const edges=[{id:"src",t:"source",a:"g",b:"e",V:s.V,box:.15,tag:+s.V.toFixed(1)+" V",tagOff:[0,-12],tagf:[-30,44]},{id:"w0",t:"wire",a:"e",b:"a"}];
+  let top="a", bot="g";
+  us.forEach((u,b)=>{ const c=LEDK[s.cols[b]], parts=[...(b===0&&s.pwm?["SW"]:[]),"R","D",...(b===0&&s.nLed===2?["Db"]:[])], N=parts.length;
+    nodes["j"+b]={at:[u,0]}; nodes["k"+b]={at:[u,.86]}; edges.push({id:"wt"+b,t:"wire",a:top,b:"j"+b},{id:"wb"+b,t:"wire",a:"k"+b,b:bot}); top="j"+b; bot="k"+b;
+    let prev="j"+b; parts.forEach((p,i)=>{ const nx=i===N-1?"k"+b:`m${b}_${i}`; if(i<N-1) nodes[nx]={at:[u,+(.86*(i+1)/N).toFixed(3)]};
+      const lab={lab:[.27,0],labf:[34,0]};
+      if(p==="SW") edges.push({id:"SW",t:"switch",a:prev,b:nx,closed:s.closed,label:"gate",...lab});
+      else if(p==="R") edges.push({id:"R"+b,t:"resistor",a:prev,b:nx,R:s.noR?.01:s.R,rating:2,label:s.noR?"0 Ω":b>0?"":fmt(s.R,"Ω"),...lab});
+      else edges.push({id:"D"+b+(p==="Db"?"b":""),t:"diode",a:prev,b:nx,Vf:c.vf,Ron:LD.Ron,col:c.c,k:s.k,dead:b===0&&s.burnt,rating:.5,label:(p==="D"&&s.nLed!==2?c.n+" ":"")+c.vf+" V",...lab});
+      prev=nx; }); });
+  return {gnd:"g",vmax:10,iref:.02,pref:2,rspan:[47,2200],nodes,edges};
+}
+const ledOn=s=>solve(ledCircuit({...s,closed:true,burnt:false,noR:s.noR}));
+const bright=(s,o)=>Math.round(clamp((s.pwm?s.duty*Math.abs(ledOn(s).I.D0):Math.abs(o.I.D0))/LD.full,0,1)*100)+"%";
+const flowOrOff=i=>Math.abs(i)<1e-5?"off":amps(i);
+const leds={
+  circuit:ledCircuit,
+  fresh:()=>({cols:["red"],nLed:1,V:5,R:330,noR:false,burnt:false,over:0,peak:0,Vgoal:null,Vrate:3,pwm:false,closed:true,duty:.5,f:2,fGoal:2,ph:0,k:1}),
+  tick(s,sol,dt){
+    let ev=null; const I=Math.abs(sol.I.D0||0); s.peak=Math.max(s.peak,I);
+    if(s.Vgoal!==null){ if(BC.reduced) s.V=s.Vgoal; else { const d=dt*s.Vrate; s.V=s.V<s.Vgoal?Math.min(s.Vgoal,s.V+d):Math.max(s.Vgoal,s.V-d); } if(s.V===s.Vgoal) s.Vgoal=null; }
+    if(I>LD.max&&!s.burnt){ s.over+=dt; if(BC.reduced||s.over>.45){ s.burnt=true; ev="burn"; } } else if(!s.burnt) s.over=0;
+    if(s.pwm&&!BC.reduced&&dt){ s.f=Math.min(s.fGoal,s.f*Math.exp(dt*1.7)); s.ph=(s.ph+dt*s.f)%1; s.closed=s.f<LD.eye?s.ph<s.duty:true; }
+    if(s.pwm&&BC.reduced){ s.f=s.fGoal; s.closed=true; }
+    s.k=s.pwm&&s.f>=LD.eye?s.duty:1;
+    return ev;
+  },
+  busy:s=>s.Vgoal!==null,
+  ro:{ V:["Supply",s=>volts(+s.V.toFixed(1))], I:["Flow",(s,o)=>amps(o.I.D0)], peak:["Peak flow",s=>s.peak>.05?amps(s.peak):"—"], bright:["Brightness",bright],
+    red:["Red",(s,o)=>flowOrOff(o.I.D0)], yel:["Yellow",(s,o)=>flowOrOff(o.I.D1)], blu:["Blue",(s,o)=>flowOrOff(o.I.D2)],
+    duty:["On-time",s=>Math.round(s.duty*100)+"%"], speed:["Pulse speed",s=>s.pwm?(s.f>=100?"fast":fmt(+s.f.toFixed(1),"Hz")):"steady"], avg:["Average",s=>amps(s.pwm?s.duty*Math.abs(ledOn(s).I.D0):Math.abs(ledOn(s).I.D0))] },
+  val:{I:(s,o)=>Math.abs(o.I.D0),duty:s=>s.duty},
+  fail:{burn:"D0"},
+  alt:(s,o)=>`${s.cols.length} LED branch${s.cols.length>1?"es":""}, supply ${+s.V.toFixed(1)} volts, ${s.burnt?"LED burnt out":"flow "+amps(o.I.D0)}.`
+};
+
 BC.LESSONS={
  1:{
   xp:40, widget:loop, hotspot:{a:"sa",b:"sb"},
@@ -899,6 +1060,164 @@ BC.LESSONS={
     {f:5,step:7,need:["tauL"],show:v=>`${fmt(CO.L,"H")} / ${fmt(CO.R,"Ω")} = ${secs(v.tauL)}`},
     {eq:"V = I · R",what:"The spike: your flow through the gap's stated leak",step:8,need:["peak","Iopen"],show:v=>`${amps(v.Iopen)} × ${fmt(CO.Roff,"Ω")} = ${fmt(v.peak,"V",3)}`},
     {eq:"V = Vs + Vf",what:"With the diode, the clamp",step:9,need:["clamp"],show:v=>`${CO.V} V + ${CO.Vf} V = ${fmt(v.clamp,"V",3)}`}
+   ]
+  }
+ },
+ 6:{
+  xp:40, widget:diodes, hotspot:{a:"da",b:"db"},
+  steps:[
+   {id:"step",kind:"predict",prompt:"Lift the supply to 5 V. The diode's step will be...?",
+    insight:"A diode costs one small, fixed step. The resistor takes everything above it.",
+    setup:()=>{}, ro:["V","drop","I"], cols:3,
+    choices:[{t:"All 5 V"},{t:"About 0.7 V",ok:1},{t:"Nothing"}],
+    reveal:s=>{s.Vgoal=5;s.Vrate=2.5;}, settled:s=>s.Vgoal===null},
+   {id:"double",kind:"predict",prompt:"Double the supply to 10 V. The diode's step...?",
+    insight:"Same step, taller supply. All the extra height lands on the resistor, so the flow roughly doubles.",
+    setup:s=>{s.V=5;}, ro:["V","drop","rdrop"], cols:3,
+    choices:[{t:"Doubles"},{t:"Stays about 0.7 V",ok:1},{t:"Halves"}],
+    reveal:s=>{s.Vgoal=10;s.Vrate=2.5;}, settled:s=>s.Vgoal===null},
+   {id:"reverse",kind:"predict",prompt:"Reverse the battery. The flow becomes...?",
+    insight:"The ledge faces the wrong way, so the whole height piles across the diode: a cliff nothing climbs.",
+    setup:s=>{s.V=5;}, ro:["V","drop","I"], cols:3,
+    choices:[{t:"Backwards"},{t:"None at all",ok:1},{t:"The same"}],
+    reveal:s=>{s.rev=true;}, settled:()=>true},
+   {id:"size",kind:"hit",prompt:"Set the flow to 20 mA. Drag R.",
+    insight:"Only the height above the step reaches the resistor. About 415 Ω passes 20 mA at 9 V.",
+    setup:s=>{s.V=9;s.R=2000;}, ro:["drop","I"], sliders:[{k:"R",label:"R",log:[100,2000],grip:{edge:"R"}}],
+    target:{of:"I",to:.02,tol:.03,show:amps}, keep:(s,v)=>{v.dR=s.R;v.dI=Math.abs(diodeSolve(s).I.D);v.dV=s.V;}},
+   {id:"heat",kind:"predict",prompt:"Swap in a Schottky: a 0.32 V step. The diode's heat...?",
+    insight:"Heat is step times flow. A shorter step wastes less as warmth.",
+    setup:s=>{s.V=5;s.R=10;s.rate=8;}, ro:["I","drop","heat"], cols:3,
+    choices:[{t:"Less",ok:1},{t:"The same"},{t:"More"}],
+    reveal:s=>{s.kind="sch";}, settled:()=>true,
+    keep:(s,v)=>{const o=diodeSolve(s);v.sI=Math.abs(o.I.D);v.sV=DI.Vsch;v.sP=Math.abs(o.I.D)*Math.abs(o.v.da-o.v.db);}},
+   {id:"zener",kind:"do",prompt:"Drag the supply from 3 V up to 12 V. Watch the output.",
+    insight:"Past 5.1 V the Zener breaks down and holds its level. The resistor absorbs every extra volt.",
+    setup:s=>{s.mode="zen";s.V=3;s.R=DI.Rs;}, ro:["V","out","I"], sliders:[{k:"V",label:"Supply",min:1,max:12,step:.1,grip:{node:"e"}}],
+    goal:s=>s.V>=11.9},
+   {id:"sag",kind:"predict",prompt:"The supply sags from 12 V to 8 V. The output...?",
+    insight:"Still past 5.1 V, so the level holds. A wobbly supply becomes a steady height.",
+    setup:s=>{s.mode="zen";s.V=12;s.R=DI.Rs;}, ro:["V","out","I"], cols:3,
+    choices:[{t:"Falls 4 V"},{t:"Holds near 5.1 V",ok:1},{t:"Rises"}],
+    reveal:s=>{s.Vgoal=8;s.Vrate=4;}, settled:s=>s.Vgoal===null},
+   {id:"zsize",kind:"hit",prompt:"Hold 10 mA through the Zener at 9 V. Drag R.",
+    insight:"Only the height above 5.1 V falls across R. About 390 Ω passes 10 mA.",
+    setup:s=>{s.mode="zen";s.V=9;s.R=1500;}, ro:["out","I"], sliders:[{k:"R",label:"R",log:[100,2000],grip:{edge:"R"}}],
+    target:{of:"I",to:.01,tol:.04,show:amps}, keep:(s,v)=>{v.zR=s.R;v.zI=Math.abs(diodeSolve(s).I.D);v.zV=s.V;}}
+  ],
+  end:{
+   prompt:"These are the equations. Every number is yours.",
+   rows:[
+    {f:1,step:4,need:["dR","dI"],show:v=>`(${v.dV} V − ${DI.Vf} V) / ${fmt(v.dR,"Ω")} = ${fmt((v.dV-DI.Vf)/v.dR,"A",3)}`},
+    {f:0,step:5,need:["sI","sP"],show:v=>`${DI.Vsch} V × ${fmt(v.sI,"A",3)} = ${fmt(DI.Vsch*v.sI,"W",2)}`},
+    {f:2,step:8,need:["zR","zI"],show:v=>`(${v.zV} V − ${DI.Vz} V) / ${fmt(v.zI,"A",3)} = ${fmt((v.zV-DI.Vz)/v.zI,"Ω",3)}`}
+   ]
+  }
+ },
+ 7:{
+  xp:40, widget:trans, hotspot:{a:"j1",b:"bn"},
+  steps:[
+   {id:"base",kind:"predict",prompt:"The gate is shut. Send 1 mA into the base. The main stream...?",
+    insight:"A thin side flow swung the gate wide. The main stream is about 100 times larger.",
+    setup:()=>{}, ro:["base","main","vq"], cols:3,
+    choices:[{t:"About 1 mA"},{t:"About 100 mA",ok:1},{t:"Nothing"}],
+    reveal:s=>{s.IbGoal=1e-3;}, settled:s=>s.IbGoal===null},
+   {id:"scale",kind:"hit",prompt:"Drag the base flow until the main stream reads 200 mA.",
+    insight:"The main stream follows the base flow at a fixed ratio. Small input, large output.",
+    setup:s=>{s.Ib=3e-4;}, ro:["base","main"], sliders:[{k:"Ib",label:"Base flow",log:[1e-5,1e-2],fmt:s=>amps(s.Ib),grip:{edge:"Rb",sign:1}}],
+    target:{of:"Ic",to:.2,tol:.03,show:amps}, keep:(s,v)=>{v.ib2=s.Ib;v.ic2=Math.abs(trSolve(s).I.Q);}},
+   {id:"cap",kind:"predict",prompt:"Raise the base flow from 2 mA to 10 mA. The main stream...?",
+    insight:"The load already caps the flow. The gate is fully open and drops almost no height.",
+    setup:s=>{s.Ib=2e-3;}, ro:["base","main","vq"], cols:3,
+    choices:[{t:"Five times bigger"},{t:"Stops growing",ok:1},{t:"Falls"}],
+    reveal:s=>{s.IbGoal=1e-2;}, settled:s=>s.IbGoal===null,
+    keep:(s,v)=>{const o=trSolve(s);v.vsat=o.v.col-o.v.k2;v.isat=Math.abs(o.I.Q);}},
+   {id:"hot",kind:"predict",prompt:"Which gets the switch hotter: half open, or fully on?",
+    insight:"Half open means a tall slope and heavy flow together. Fully on or off, one of them is near zero.",
+    setup:s=>{s.Ib=1.5e-3;}, ro:["main","vq","heat"], cols:3,
+    choices:[{t:"Fully on"},{t:"Half open",ok:1},{t:"The same"}],
+    reveal:s=>{s.IbGoal=5e-3;}, settled:s=>s.IbGoal===null},
+   {id:"gate",kind:"predict",prompt:"No base now. Lift the gate height to 5 V. How much flow enters the gate?",
+    insight:"The gate is insulated. Height alone opens it; no flow goes in.",
+    setup:s=>{s.mode="mos";}, ro:["gate","gflow","main"], cols:3,
+    choices:[{t:"As much as the main stream"},{t:"A little"},{t:"None at all",ok:1}],
+    reveal:s=>{s.VgGoal=5;}, settled:s=>s.VgGoal===null},
+   {id:"thresh",kind:"hit",prompt:"Raise the gate until the load draws 100 mA.",
+    insight:"Nothing happens until about 2 V, then it opens fast. That threshold is built in.",
+    setup:s=>{s.mode="mos";s.Vg=0;}, ro:["gate","main"], sliders:[{k:"Vg",label:"Gate height",min:0,max:5,step:.01,fmt:s=>volts(+s.Vg.toFixed(2)),grip:{node:"gd"}}],
+    target:{of:"Ic",to:.1,tol:.06,show:amps}, keep:(s,v)=>{v.vth=s.Vg;}},
+   {id:"full",kind:"do",prompt:"Lift the gate to 5 V: fully on.",
+    insight:"Fully on, the channel is nearly flat: almost no height lost, almost no heat.",
+    setup:s=>{s.mode="mos";s.Vg=2.6;}, ro:["gate","main","heat"], sliders:[{k:"Vg",label:"Gate height",min:0,max:5,step:.01,fmt:s=>volts(+s.Vg.toFixed(2)),grip:{node:"gd"}}],
+    goal:s=>s.Vg>=4.99, keep:(s,v)=>{const o=trSolve(s);v.mI=Math.abs(o.I.Q);v.mV=o.v.col-o.v.k2;}},
+   {id:"float",kind:"predict",prompt:"Unplug the gate driver. The gate's height becomes...?",
+    insight:"Nothing anchors it, so stray charge sets the height. The switch half-opens at random.",
+    setup:s=>{s.mode="mos";s.Vg=5;}, ro:["gate","main","heat"], cols:3,
+    choices:[{t:"0 V"},{t:"Holds 5 V"},{t:"Wanders",ok:1}],
+    reveal:s=>{s.float=true;}, settled:s=>s.t>=3||BC.reduced},
+   {id:"pulldown",kind:"do",prompt:"Add a pull-down resistor to the gate.",
+    insight:"The resistor gives the gate a floor to rest on. Unplugged, it settles at 0 V: off.",
+    setup:s=>{s.mode="mos";s.Vg=5;s.float=true;}, ro:["gate","main","heat"],
+    actions:[{label:s=>s.pd?"Pull-down added":"Add pull-down",run:s=>{s.pd=true;}}],
+    goal:s=>s.pd}
+  ],
+  end:{
+   prompt:"These are the equations. Every number is yours.",
+   rows:[
+    {f:0,step:2,need:["ib2","ic2"],show:v=>`${TR.hFE} × ${amps(v.ib2)} = ${amps(TR.hFE*v.ib2)}`},
+    {f:1,step:2,need:["ib2"],show:v=>`(${TR.V} V − ${TR.Vbe} V) / ${amps(v.ib2)} = ${fmt((TR.V-TR.Vbe)/v.ib2,"Ω",3)}`},
+    {f:2,step:3,need:["vsat","isat"],show:v=>`${fmt(v.vsat,"V",2)} × ${amps(v.isat)} = ${fmt(v.vsat*v.isat,"W",2)}`},
+    {f:3,step:7,need:["mI","mV"],show:v=>`(${amps(v.mI)})² × ${fmt(v.mV/v.mI,"Ω",2)} = ${fmt(v.mV*v.mI,"W",2)}`}
+   ]
+  }
+ },
+ 8:{
+  xp:40, widget:leds, hotspot:{a:"j0",b:"k0"},
+  steps:[
+   {id:"colours",kind:"predict",prompt:"A 3 V supply feeds three LEDs. Which light up?",
+    insight:"Each colour has its own step height. Blue's step eats the whole 3 V, leaving no slope.",
+    setup:s=>{s.cols=["red","yel","blu"];s.R=100;s.V=0;}, ro:["red","yel","blu"], cols:2,
+    choices:[{t:"All three"},{t:"Red and yellow",ok:1},{t:"Only red"},{t:"None"}],
+    reveal:s=>{s.Vgoal=3;s.Vrate=1.5;}, settled:s=>s.Vgoal===null},
+   {id:"blue",kind:"do",prompt:"Raise the supply until blue lights.",
+    insight:"Blue has the tallest step, so it needs the highest supply before anything flows.",
+    setup:s=>{s.cols=["red","yel","blu"];s.R=100;s.V=3;}, ro:["V","red","blu"], sliders:[{k:"V",label:"Supply",min:1,max:6,step:.1,grip:{node:"e"}}],
+    goal:(s,o)=>Math.abs(o.I.D2)>.001},
+   {id:"burn",kind:"predict",prompt:"Pull the resistor out. The red LED...?",
+    insight:"No resistor, no slope to take the extra height. The flow soars and the LED burns.",
+    setup:s=>{s.V=5;s.R=330;}, ro:["V","I","peak"], cols:3,
+    choices:[{t:"Glows brighter"},{t:"Burns out",ok:1},{t:"Nothing changes"}],
+    reveal:s=>{s.noR=true;}, settled:s=>s.burnt},
+   {id:"size",kind:"hit",prompt:"Set the red LED to 10 mA. Drag R.",
+    insight:"The resistor takes what the step leaves. About 310 Ω passes 10 mA at 5 V.",
+    setup:s=>{s.V=5;s.R=1500;}, ro:["I","bright"], sliders:[{k:"R",label:"R",log:[47,2200],grip:{edge:"R0"}}],
+    target:{of:"I",to:.01,tol:.04,show:amps}, keep:(s,v)=>{v.hI=Math.abs(solve(ledCircuit(s)).I.D0);v.hV=s.V;}},
+   {id:"stack",kind:"predict",prompt:"Two red LEDs in series. About what supply lights both?",
+    insight:"Steps stack: 1.9 V plus 1.9 V. The lift must clear both before anything flows.",
+    setup:s=>{s.nLed=2;s.R=100;s.V=0;}, ro:["V","I","bright"], cols:3,
+    choices:[{t:"2 V"},{t:"4 V",ok:1},{t:"8 V"}],
+    reveal:s=>{s.Vgoal=6;s.Vrate=1.2;}, settled:s=>s.Vgoal===null},
+   {id:"size2",kind:"hit",prompt:"Two reds on 9 V. Set 10 mA with R.",
+    insight:"Both steps come off the top first. About 520 Ω passes 10 mA.",
+    setup:s=>{s.nLed=2;s.V=9;s.R=2000;}, ro:["I","bright"], sliders:[{k:"R",label:"R",log:[47,2200],grip:{edge:"R0"}}],
+    target:{of:"I",to:.01,tol:.04,show:amps}, keep:(s,v)=>{v.hI2=Math.abs(solve(ledCircuit(s)).I.D0);v.hV2=s.V;}},
+   {id:"pwm",kind:"predict",prompt:"Pulse the gate on half the time, fast. The LED looks...?",
+    insight:"Too fast to follow: your eye averages the flashes. Half the time on, half the brightness.",
+    setup:s=>{s.duty=.5;s.f=2;s.fGoal=2;}, ro:["speed","avg","bright"], cols:3,
+    choices:[{t:"Full brightness"},{t:"About half",ok:1},{t:"Dark"}],
+    reveal:s=>{s.pwm=true;s.fGoal=200;if(BC.reduced) s.f=200;}, settled:s=>s.f>=s.fGoal},
+   {id:"duty",kind:"hit",prompt:"Dim it to a quarter. Drag the on-time.",
+    insight:"Brightness follows the average flow. Shorter pulses, dimmer light, same wiring.",
+    setup:s=>{s.pwm=true;s.f=200;s.fGoal=200;s.duty=.8;}, ro:["avg","bright"], sliders:[{k:"duty",label:"Gate on-time",min:.05,max:1,step:.01,fmt:s=>Math.round(s.duty*100)+"%"}],
+    target:{of:"duty",to:.25,tol:.06,show:p=>Math.round(p*100)+"%"}, keep:(s,v)=>{v.dty=s.duty;v.ion=Math.abs(ledOn(s).I.D0);}}
+  ],
+  end:{
+   prompt:"These are the equations. Every number is yours.",
+   rows:[
+    {f:0,step:4,need:["hI","hV"],show:v=>`(${v.hV} V − ${LEDK.red.vf} V) / ${amps(v.hI)} = ${fmt((v.hV-LEDK.red.vf)/v.hI,"Ω",3)}`},
+    {f:1,step:4,need:["hI","hV"],show:v=>`(${v.hV} V − ${LEDK.red.vf} V) × ${amps(v.hI)} = ${fmt((v.hV-LEDK.red.vf)*v.hI,"W",2)}`},
+    {f:2,step:6,need:["hI2","hV2"],show:v=>`(${v.hV2} V − 2 × ${LEDK.red.vf} V) / ${amps(v.hI2)} = ${fmt((v.hV2-2*LEDK.red.vf)/v.hI2,"Ω",3)}`},
+    {eq:"I avg = on-time × I",what:"A pulsed gate",step:8,need:["dty","ion"],show:v=>`${Math.round(v.dty*100)}% × ${amps(v.ion)} = ${amps(v.dty*v.ion)}`}
    ]
   }
  }
