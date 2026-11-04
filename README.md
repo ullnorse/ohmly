@@ -81,11 +81,15 @@ Module pages have tabs, addressed as `#m-1/quiz`: Lesson, Notes (intro, key poin
 
 A step's `sliders` are `{k, label, min, max, step}` or `{k, label, log: [lo, hi]}`, with optional `fmt(s)` for the printed value and `grip` to drag the part in the picture: `{node}` lifts a node, `{edge, sign}` drags a resistor's slope, `{walk: 1}` moves the walk marker. `goal(s, solved)` also gets the solution.
 
-A widget is `{circuit(s), fresh(), tick(s, solved, dt), busy(s), ro, val, fail, alt(s, solved)}`. `tick` returns an event name when a part fails, `fail[event]` names the edge that bursts, and `alt` is the picture's text alternative. Read `vals` in `setup` to carry a learner's number between steps.
+A widget is `{circuit(s), fresh(), tick(s, solved, dt), busy(s), ro, val, fail, clean?, alt(s, solved)}`. `tick` returns an event name when a part fails, `fail[event]` names the edge that bursts, `clean[event]` leaves out the smoke, and `alt` is the picture's text alternative. Read `vals` in `setup` to carry a learner's number between steps.
 
 The picture is driven by a circuit description: `{gnd, vmax, iref, pref?, rspan?, nodes: {id: {at: [u, v], flat?, pad?, tag?, gauge?, was?}}, edges: [{id, t, a, b, ...}], walk?}`, solved by nodal analysis. Height is node voltage on one scale per circuit (`vmax`), so a circuit's heights compare directly; set `vmax` once per widget and leave it. Plan coordinates are free, so any series or parallel layout works. An edge marked `ghost` draws but does not conduct until the lesson opens it.
 
-Stream width and speed each follow the square root of current over a fixed grain, so the charge a stream carries is proportional to current and adds up at a junction. Edge types are in `TYPES` (`wire`, `resistor`, `switch`, `fuse`, `source`). A new part needs one `TYPES` entry: `g(e)` for its conductance, `solid(c)` for its blocks and `symbol(c)` for the schematic.
+Stream width and speed each follow the square root of current over a fixed grain, so the charge a stream carries is proportional to current and adds up at a junction. Edge types are in `TYPES` (`wire`, `resistor`, `switch`, `fuse`, `source`, `capacitor`, `inductor`, `diode`). A new part needs one `TYPES` entry: `g(e,h)` for its conductance, `solid(c)` for its blocks and `symbol(c)` for the schematic. A switch with `Roff` leaks through that resistance when open.
+
+Parts with memory are companion models. `capacitor` holds `v0`, draws as a glass tank whose footprint is `box` and whose water level is its voltage. `inductor` holds `i0` and draws as a flywheel. Add `j(e,h)` for an injected current and `commit(e,v,I)` to store state. `solve(d)` reads the circuit at this instant; `timeStep(d,run,hmax)` advances it by `run` seconds of model time with backward Euler. `diode` is an ideal `Vf` plus `Ron`, and `flip(e,v,I)` lets any part change state until the solution agrees with it.
+
+A description with `live: true` runs on its own clock: heights follow the model without the spring, and `vmax` may change, in which case the scale eases and the back walls relabel. `clock: {t, scale}` prints the time and how much it is slowed; `trace: {label, pts, tMax, yMax, guides, ticks, side}` plots a run. A widget with time adds `running(s)` and `quantum(s)`; under reduced motion the engine calls `tick` with one quantum every 650 ms.
 
 Under reduced motion nothing loops: the picture settles at once, with static grains and arrowheads standing in for flow.
 
