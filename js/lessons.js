@@ -443,7 +443,7 @@ function Terrain(stage){
     const P=PAL, D=T.desc, sc=geo.sc, Iref=D.iref||.05, lw=clamp(sc*.0072,1.4,2.3)+M*1.1, spacing=clamp(sc*.062,9,19), fade=1-M*.25, poly=info.poly, f=T.flow[e.id]||0, I=T.sol.I[e.id]||0, pl=[];
     for(let i=0;i<poly.length-1;i++) pl.push(Math.hypot(poly[i].u-poly[i+1].u,poly[i].v-poly[i+1].v)*sc);
     const x=f/Iref, pr=T.pres[e.id]===undefined?1:T.pres[e.id];
-    if(x<.002||pr<.6||e.t==="source") return;
+    if(x<.002||pr<.6||e.t==="source"||(e.nosch&&M>.3)) return;
     if(e.t==="resistor"&&e.open||e.t==="fuse"&&e.blown||e.t==="switch"&&!e.closed||TYPES[e.t].tall) return;
     const vel=sc*.6*clamp(Math.sqrt(x),0,3.2), sgn=I<0?-1:1, offHere=offs[e.id]||0;
     const hw=(e.t==="resistor"&&D.rspan&&!e.inner)?HW*(1-.56*clamp(Math.log(e.R/D.rspan[0])/Math.log(D.rspan[1]/D.rspan[0]),0,1)):(e.hw||HW), w=Math.min(hw*.94,HW*.98*Math.sqrt(x)), hot=Math.sqrt(T.heat[e.id]||0);
@@ -474,7 +474,8 @@ function Terrain(stage){
   }
   /* a dashed line from the control node, at its own height, to the gate on the slope */
   function drawTies(g,items){
-    items.forEach(({e,info})=>{ if(!TYPES[e.t].ctl||e.ghost) return; const A=info.run[0], B=info.run[info.run.length-1], m=T.project(lerpP(A,B,.5),M); [e.ctl,e.ctl2].filter(Boolean).forEach(n=>{ const q=T.nodeAt(n); g.save(); g.strokeStyle=PAL.mutedS; g.lineWidth=1.8; g.setLineDash([5,4]); g.beginPath(); g.moveTo(q[0],q[1]); g.lineTo(m[0],m[1]); g.stroke(); g.restore(); }); });
+    const fade=1-clamp((M-.3)/.45,0,1); if(fade<=0) return;
+    items.forEach(({e,info})=>{ if(!TYPES[e.t].ctl||e.ghost) return; const A=info.run[0], B=info.run[info.run.length-1], m=T.project(lerpP(A,B,.5),M); [e.ctl,e.ctl2].filter(Boolean).forEach(n=>{ const q=T.nodeAt(n); g.save(); g.globalAlpha*=fade; g.strokeStyle=PAL.mutedS; g.lineWidth=1.8; g.setLineDash([5,4]); g.beginPath(); g.moveTo(q[0],q[1]); g.lineTo(m[0],m[1]); g.stroke(); g.restore(); }); });
   }
   /* an LED's light: a bulb on the ledge and a halo that follows the flow */
   function drawLights(g,items){
@@ -607,12 +608,12 @@ function Terrain(stage){
     if(solidA>0){ g.globalAlpha=solidA; orderBoxes().forEach(i=>{ if(!boxes[i].under) drawBox(g,boxes[i]); }); g.globalAlpha=1; }
     drawGapMarks(g,items);
     drawTies(g,items);
-    if(M>.3){ g.globalAlpha=clamp((M-.3)/.45,0,1); items.forEach(it=>{ it.c.p=it.info.full.map(q=>T.project(q,M)); it.c.line=()=>{ g.strokeStyle=PAL.inkS; g.lineWidth=2.5; g.lineJoin="round"; g.beginPath(); it.c.p.forEach((q,i)=>i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1])); g.stroke(); }; if(!it.e.ghost) TYPES[it.e.t].symbol(it.c); }); g.globalAlpha=1; }
+    if(M>.3){ g.globalAlpha=clamp((M-.3)/.45,0,1); items.forEach(it=>{ it.c.p=it.info.full.map(q=>T.project(q,M)); it.c.line=()=>{ g.strokeStyle=PAL.inkS; g.lineWidth=2.5; g.lineJoin="round"; g.beginPath(); it.c.p.forEach((q,i)=>i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1])); g.stroke(); }; if(!it.e.ghost&&!it.e.nosch) TYPES[it.e.t].symbol(it.c); }); g.globalAlpha=1; }
     items.forEach(({e,info})=>{ if(!e.inner&&!info.sunk) streamOf(g,e,info); });
     drawLights(g,items);
     drawNodeMarks(g);
     drawLeads(g);
-    items.forEach(({e,info})=>{ if(!e.tag||(e.t==="source"&&M<.6)) return; const b=e.tagAt==="a"?info.full[0]:info.full[info.full.length-1], p=T.project(b,M), o=e.tagOff||[0,-14], f=e.tagf||o; tag(g,e.tag,p[0]+o[0]+(f[0]-o[0])*M,p[1]+o[1]+(f[1]-o[1])*M,e.tagc?P[e.tagc+"S"]:P.inkS,labelPx(clamp(geo.sc*.058,13,18)),e.align||"center",600); });
+    items.forEach(({e,info})=>{ if(!e.tag||(e.t==="source"&&M<.6)||(e.nosch&&M>.5)) return; const b=e.tagAt==="a"?info.full[0]:info.full[info.full.length-1], p=T.project(b,M), o=e.tagOff||[0,-14], f=e.tagf||o; tag(g,e.tag,p[0]+o[0]+(f[0]-o[0])*M,p[1]+o[1]+(f[1]-o[1])*M,e.tagc?P[e.tagc+"S"]:P.inkS,labelPx(clamp(geo.sc*.058,13,18)),e.align||"center",600); });
     drawArcs(g,items);
     drawFx(g,dt);
     drawTrace(g,W,H);
@@ -984,27 +985,37 @@ TYPES.opamp={tall:true, ctl:1, g:()=>OA.G, j:e=>OA.G*(e.Vo||0),
   flip:(e,v,I,d)=>{ const old=e.Vo||0, f=V=>{ e.Vo=V; const r=solveOnce(d); return V-OA.A*(r.v[e.ctl]-r.v[e.ctl2]); }, f0=f(0), f1=f(1), V=f1>f0?clamp(-f0/(f1-f0),e.lo,e.hi):0; e.Vo=V; return Math.abs(V-old)>1e-9; },
   solid:c=>c.tower(), symbol:symOpamp};
 function symOpamp(c){
-  const {g,p,e}=c, a=p[0], b=p[p.length-1], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L, nx=uy, ny=-ux, P=PAL, r=Math.min(30,L*.3), h=r*1.05, cx=(a[0]+b[0])/2, cy=(a[1]+b[1])/2;
-  g.strokeStyle=P.inkS; g.lineWidth=2.5; g.lineJoin="round"; g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke();
-  g.fillStyle=P.bgS; g.beginPath(); g.moveTo(cx+ux*r*1.3,cy+uy*r*1.3); g.lineTo(cx-ux*r+nx*h,cy-uy*r+ny*h); g.lineTo(cx-ux*r-nx*h,cy-uy*r-ny*h); g.closePath(); g.fill(); g.stroke();
+  const {g,p,e}=c, a=p[0], b=p[p.length-1], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L, nx=uy, ny=-ux, P=PAL, h=L*.5, o=L*.3;
+  const pt=(s,k)=>[a[0]+ux*s+nx*k,a[1]+uy*s+ny*k], top=pt(0,o), bot=pt(0,-o);
+  g.strokeStyle=P.inkS; g.lineWidth=2.5; g.lineJoin="round";
+  /* the pins: − on top, + below, each wired in solid right angles to its real node */
+  [[top,e.ctl2],[bot,e.ctl]].forEach(([q,id])=>{ const n=c.at(id); g.beginPath(); g.moveTo(q[0],q[1]); g.lineTo(n[0],q[1]); g.lineTo(n[0],n[1]); g.stroke(); });
+  g.fillStyle=P.bgS; g.beginPath(); g.moveTo(...pt(0,h)); g.lineTo(...pt(0,-h)); g.lineTo(b[0],b[1]); g.closePath(); g.fill(); g.stroke();
   g.font=`700 15px ${c.font}`; g.textAlign="center"; g.textBaseline="middle"; g.fillStyle=P.inkS;
-  g.fillText(e.inv?"−":"+",cx-ux*r*.45+nx*h*.5,cy-uy*r*.45+ny*h*.5); g.fillText(e.inv?"+":"−",cx-ux*r*.45-nx*h*.5,cy-uy*r*.45-ny*h*.5);
+  g.fillText("−",top[0]+ux*L*.1,top[1]+uy*L*.1); g.fillText("+",bot[0]+ux*L*.1,bot[1]+uy*L*.1);
+  /* the rails as short stubs on the triangle's slanted sides */
+  [[1,"+"+OA.rail+" V"],[-1,"−"+OA.rail+" V"]].forEach(([k,s])=>{ const f=.32, q=[a[0]+(b[0]-a[0])*f+nx*h*(1-f)*k,a[1]+(b[1]-a[1])*f+ny*h*(1-f)*k]; g.beginPath(); g.moveTo(q[0],q[1]); g.lineTo(q[0]+nx*14*k,q[1]+ny*14*k); g.stroke(); g.font=`600 12px ${c.font}`; g.fillStyle=P.mutedS; g.fillText(s,q[0]+nx*25*k,q[1]+ny*25*k); });
 }
 const winOf=s=>{ const R=OA.rail, w=OA.slew*s.t; return s.slew?[Math.max(-R,s.v0-w),Math.min(R,s.v0+w)]:[-R,R]; };
 function ampCircuit(s){
-  const R=OA.rail, inv=s.rin!==null, [lo,hi]=winOf(s), res=(id,a,b,v,lab)=>({id,t:"resistor",a,b,R:v,rating:5,label:fmt(v,"Ω"),...lab});
+  const R=OA.rail, inv=s.rin!==null, cmp=s.ref!==null, [lo,hi]=winOf(s), res=(id,a,b,v,lab)=>({id,t:"resistor",a,b,R:v,rating:5,label:fmt(v,"Ω"),...lab});
   const H={lab:[0,.27],labf:[0,-26]}, Vt={lab:[.27,0],labf:[34,0]};
-  const nodes={g:{at:[0,.86]},gm:{at:[.55,.86]},go:{at:[1.1,.86]},gp:{at:[1.7,0]},gn:{at:[2.2,0]},rp:{at:[1.7,0],flat:[1.7,.3]},rn:{at:[2.2,0],flat:[2.2,.3]},
-    in:{at:[0,.86],flat:[0,.3]},i:{at:[0,0]},o:{at:[1.1,.86],flat:[1.1,.3]},fo:{at:[1.1,0]},m:{at:[.55,0]}};
+  /* flat = the Schematic layout (it must stay inside the plan's extent): − pin on top, + below; the ground bus runs along the bottom and nothing crosses a part */
+  const nodes={g:{at:[0,.86],flat:[.5,.86]},gm:{at:[.55,.86],flat:inv?[1.2,.86]:cmp||s.rg!==null||s.gr?[0,.86]:[.5,.86]},go:{at:[1.1,.86],flat:[1.4,.86]},gp:{at:[1.5,0],flat:[1.4,.86]},gn:{at:[1.9,0],flat:[1.4,.86]},rp:{at:[1.5,0],flat:[1.4,.86]},rn:{at:[1.9,0],flat:[1.4,.86]},
+    in:{at:[0,.86],flat:[.5,.66]},i:{at:[0,0],flat:inv?[.5,.3]:[.5,.55]},ta:{at:[1.1,.86],flat:[1.4,.425]},o:{at:[1.1,.86],flat:[1.9,.425]},fo:{at:[1.1,0],flat:inv?[1.05,.02]:[0,.02]},m:{at:[.55,0],flat:inv?[1.05,.3]:[0,.3]}};
   const edges=[{id:"src",t:"source",a:"g",b:"in",V:s.Vin,box:.15,tag:volts(+s.Vin.toFixed(2)),tagOff:[0,-12],tagf:[-30,44]},{id:"w0",t:"wire",a:"in",b:"i"},
-    {id:"wg1",t:"wire",a:"g",b:"gm"},{id:"wg2",t:"wire",a:"gm",b:"go"},{id:"wg3",t:"wire",a:"go",b:"gp"},{id:"wg4",t:"wire",a:"gp",b:"gn"},
-    {id:"rp",t:"source",a:"gp",b:"rp",V:R,box:.1,tag:"+"+R+" V rail",tagOff:[0,-10],tagf:[0,30]},{id:"rn",t:"source",a:"gn",b:"rn",V:-R,box:.1,tag:"−"+R+" V rail",tagOff:[0,-10],tagf:[0,30]},
-    {id:"A",t:"opamp",a:"go",b:"o",box:.2,ctl:inv?"gm":"i",ctl2:"m",inv,lo,hi},{id:"wo",t:"wire",a:"o",b:"fo"}];
-  if(s.ref!==null){ nodes.mt={at:[.55,.86],flat:[.55,.3]}; edges.push({id:"ref",t:"source",a:"gm",b:"mt",V:s.ref,box:.15,tag:volts(s.ref),tagOff:[0,-12],tagf:[30,44]},{id:"wr",t:"wire",a:"mt",b:"m"}); }
+    {id:"wg1",t:"wire",a:"g",b:"gm"},{id:"wg2",t:"wire",a:"gm",b:"go",nosch:1},{id:"wg3",t:"wire",a:"go",b:"gp",nosch:1},{id:"wg4",t:"wire",a:"gp",b:"gn",nosch:1},
+    {id:"rp",t:"source",a:"gp",b:"rp",V:R,box:.1,tag:"+"+R+" V rail",tagOff:[0,-10],tagf:[0,30],nosch:1},{id:"rn",t:"source",a:"gn",b:"rn",V:-R,box:.1,tag:"−"+R+" V rail",tagOff:[0,-10],tagf:[0,30],tagAt:"a",nosch:1},
+    {id:"wta",t:"wire",a:"ta",b:"go",nosch:1},
+    {id:"A",t:"opamp",a:"ta",b:"o",box:.2,ctl:inv?"gm":"i",ctl2:"m",lo,hi},
+    {id:"wo",t:"wire",a:"o",b:"fo",via:[[1.1,.6,2.2,.425],[1.1,.3,2.2,.02]],nosch:cmp?1:0}];
+  if(cmp){ nodes.mt={at:[.55,.86],flat:[0,.66]}; edges.push({id:"ref",t:"source",a:"gm",b:"mt",V:s.ref,box:.15,tag:volts(s.ref),tagOff:[0,-12],tagf:[34,0]},{id:"wr",t:"wire",a:"mt",b:"m"}); }
   if(inv) edges.push(res("Rin","i","m",s.rin,H));
-  if(s.rf===null){ if(s.fb||s.ref===null) edges.push({id:"fb",t:"wire",a:"fo",b:"m",ghost:!s.fb}); }
-  else edges.push(res("Rf","fo","m",s.rf,H));
+  if(s.rf===null){ if(s.fb||!cmp) edges.push({id:"fb",t:"wire",a:"fo",b:"m",ghost:!s.fb}); }
+  else edges.push(res("Rf","fo","m",s.rf,{lab:[0,.27],labf:[34,0]}));
   if(!inv&&(s.rg!==null||s.gr)) edges.push({...res("Rg","m","gm",s.rg||1000,Vt),ghost:s.rg===null});
+  /* the plan is 1.9 wide, so Schematic u scales to fit */
+  const K=1.9/2.2; Object.values(nodes).forEach(n=>{ if(n.flat) n.flat=[+(n.flat[0]*K).toFixed(3),n.flat[1]]; }); edges.forEach(e=>{ if(e.via) e.via=e.via.map(w=>[w[0],w[1],+(w[2]*K).toFixed(3),w[3]]); });
   return {gnd:"g",vmax:12,vmin:-12,iref:.005,pref:1,rspan:[200,10000],nodes,edges};
 }
 const amOut=s=>solve(ampCircuit(s)).v.o;
