@@ -158,6 +158,7 @@ function modRoute(h){
 /* panels mount on first view: a lab canvas has no size while its panel is hidden */
 function showTab(c,tab){
   $$(".tabPanel").forEach(p=>p.hidden=p.id!=="panel-"+tab);
+  document.body.classList.toggle("lsWide",tab==="lesson");
   $$(".modTabs [role=tab]").forEach(t=>{ const on=t.id==="tab-"+tab; t.setAttribute("aria-selected",on); t.tabIndex=on?0:-1; });
   if(tab==="labs"){ const host=$("#labs"); if(host&&!host.children.length) c.labs.forEach((k,i)=>BC.mountLab(k,host,`${c.n}.${i+1}`)); }
   if(tab==="lesson"){ const host=$("#lessonHost"); if(host&&!host.children.length) BC.mountLesson(host,c.n); }
@@ -315,7 +316,7 @@ function render(){
     $("#resetYes").addEventListener("click",()=>{const keep={sound:S.sound,theme:S.theme}; if(S.pxmm) keep.pxmm=S.pxmm; Object.keys(S).forEach(k=>delete S[k]); Object.assign(S,BC.defaults(),keep); BC.save(); render(); $("#impMsg").className="note good"; $("#impMsg").textContent="All progress erased.";});
   } else if(h==="home"||h==="view"){ currentKey="home"; v.innerHTML=home(); title="Ohmly · An interactive platform for learning electronics"; const lh=$("#lessonHost"); if(lh) BC.mountLesson(lh,1); }
   else { currentKey="404"; v.innerHTML=`<header class="stack"><h1 tabindex="-1">Not found</h1><p class="lede muted">There is nothing at this address. <a href="#home">Back to the contents</a>.</p></header>`; title="Not found · Ohmly"; }
-  document.title=title; document.body.classList.toggle("tdWide",currentKey==="teardown"); document.body.classList.toggle("homeV",currentKey==="home"); rail(currentKey); header(); window.scrollTo(0,0);
+  document.title=title; document.body.classList.toggle("tdWide",currentKey==="teardown"); document.body.classList.toggle("homeV",currentKey==="home"); if(!$("#panel-lesson:not([hidden])")) document.body.classList.remove("lsWide"); rail(currentKey); header(); window.scrollTo(0,0);
   if(lab&&$("#lab-"+lab)) scrollToLab(lab);
   else { const h1=$("#view h1"); if(h1&&routed) h1.focus({preventScroll:true}); }
   routed=true;
