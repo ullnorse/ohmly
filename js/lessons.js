@@ -482,6 +482,61 @@ const loop={
   alt:(s,o)=>`supply ${s.V} volts, resistor ${s.burnt?"burned open":s.R+" ohms"}, ${s.closed?"switch closed":"switch open"}, current ${amps(o.I.src)}.`
 };
 
+/* ---------- module 2's network on one 5 V bench: a series fall with an optional load off its middle, or parallel paths between two rails ---------- */
+const solveMid=s=>{ const R2=s.load?s.R2*s.RL/(s.R2+s.RL):s.R2; return s.V*R2/(s.R1+R2); };
+function serCircuit(s){
+  const v=!!s.veil, nodes={g:{at:[0,.86]},e:{at:[0,.86],flat:[0,.3]},a:{at:[0,0]},ra:{at:[.18,0]},m:{at:[1.08,0],pad:1},rb:{at:[1.98,0]},c1:{at:[2.16,0]},c2:{at:[2.16,.86]},f:{at:[1.08,.86]}};
+  if(v) nodes.m.gauge=s.gauge;
+  else if(s.pos===null){ nodes.m.tag=volts(solveMid(s)); nodes.m.tagOff=[0,-HW*2]; }
+  if(s.was) { nodes.m.was=s.was; nodes.m.wasLabel=volts(s.was); }
+  const edges=[
+   {id:"src",t:"source",a:"g",b:"e",V:s.V,box:.15,tag:s.V+" V",tagOff:[0,-12],tagf:[-30,44]},
+   {id:"w0",t:"wire",a:"e",b:"a"},{id:"w1",t:"wire",a:"a",b:"ra"},
+   {id:"R1",t:"resistor",a:"ra",b:"m",R:s.R1,ghost:v,label:fmt(s.R1,"Ω"),lab:[0,.25],labf:[0,-20]},
+   {id:"R2",t:"resistor",a:"m",b:"rb",R:s.R2,ghost:v,label:fmt(s.R2,"Ω"),lab:[0,.25],labf:[0,-20]},
+   {id:"w2",t:"wire",a:"rb",b:"c1"},{id:"w3",t:"wire",a:"c1",b:"c2"},{id:"w4",t:"wire",a:"c2",b:"f"}];
+  if(s.load!==null) edges.push({id:"RL",t:"resistor",a:"m",b:"f",R:s.RL,ghost:!s.load,label:fmt(s.RL,"Ω"),lab:[.25,0],labf:[34,0]});
+  edges.push({id:"w5",t:"wire",a:"f",b:"g"});
+  const d={gnd:"g",vmax:5.5,iref:.015,pref:.05,rspan:[220,10000],nodes,edges};
+  if(s.pos!==null) d.walk={path:["g","e","a","ra","m","rb","c1","c2","f","g"],t:s.pos};
+  return d;
+}
+function parCircuit(s){
+  const nodes={g:{at:[0,.86]},e:{at:[0,.86],flat:[0,.3]},a:{at:[0,0]},j1:{at:[.58,0]},j2:{at:[1.22,0]},j3:{at:[1.86,0]},k1:{at:[.58,.86]},k2:{at:[1.22,.86]},k3:{at:[1.86,.86]},corner:{at:[2.16,.86]}};
+  const I=(R,on)=>on&&s.V?amps(s.V/R):"", br=(id,a,b,R,on)=>({id,t:"resistor",a,b,R,ghost:!on,label:on?[fmt(R,"Ω"),I(R,on)]:[fmt(R,"Ω")],lab:[.27,.2],labf:[38,0]});
+  const n2=s.n>=2, n3=s.n>=3, shown=k=>s.n>=k||s.next===k;
+  const edges=[
+   {id:"src",t:"source",a:"g",b:"e",V:s.V,box:.15,tag:s.V+" V",tagOff:[0,-12],tagf:[-30,44]},
+   {id:"w0",t:"wire",a:"e",b:"a"},{id:"w1",t:"wire",a:"a",b:"j1"},
+   br("Ra","j1","k1",s.Ra,true)];
+  if(shown(2)) edges.push({id:"w2",t:"wire",a:"j1",b:"j2",ghost:!n2},br("Rb","j2","k2",s.Rb,n2));
+  if(shown(3)) edges.push({id:"w3",t:"wire",a:"j2",b:"j3",ghost:!n3},br("Rc","j3","k3",s.Rc,n3),{id:"w4",t:"wire",a:"k3",b:"k2",ghost:!n3});
+  if(shown(2)) edges.push({id:"w5",t:"wire",a:"k2",b:"k1",ghost:!n2});
+  edges.push({id:"w6",t:"wire",a:"k1",b:"g"});
+  return {gnd:"g",vmax:5.5,iref:.015,pref:.05,rspan:[220,10000],nodes,edges};
+}
+const NET_R1=1000, NET_V=5;
+const midOpen=s=>s.V*s.R2/(s.R1+s.R2);
+const net={
+  circuit:s=>s.shape==="par"?parCircuit(s):serCircuit(s),
+  fresh:()=>({shape:"ser",V:NET_V,R1:NET_R1,R2:NET_R1,RL:1000,load:null,veil:false,gauge:null,was:null,pos:null,n:1,next:0,Ra:1000,Rb:2000,Rc:1000,age:0,revealed:false}),
+  tick(s,sol,dt){ if(s.revealed) s.age+=dt; return null; },
+  busy:()=>false,
+  ro:{
+   V:["Supply",s=>volts(s.V)], I:["Flow",(s,o)=>s.veil?"?":amps(o.I.src)], mid:["Middle",(s,o)=>s.veil?"?":volts(o.v.m)],
+   sag:["Sag",(s,o)=>s.was&&s.load?(100*(1-o.v.m/s.was)).toFixed(1)+"%":"0%"],
+   at:["Height",(s,o)=>walkAt(net.circuit(s),o.v,{path:WALK,t:s.pos}).z.toFixed(1)+" V"],
+   up:["Climbed",(s,o)=>walkAt(net.circuit(s),o.v,{path:WALK,t:s.pos}).up.toFixed(1)+" V"],
+   down:["Fallen",(s,o)=>walkAt(net.circuit(s),o.v,{path:WALK,t:s.pos}).down.toFixed(1)+" V"],
+   a:["Path 1",(s,o)=>amps(o.I.Ra)], b:["Path 2",(s,o)=>s.n>=2?amps(o.I.Rb):"?"], tot:["Total",(s,o)=>s.next===2&&s.n<2?"?":amps(o.I.src)],
+   Rt:["Total R",(s,o)=>s.next===3&&s.n<3?"?":fmt(s.V/Math.abs(o.I.src),"Ω")]
+  },
+  val:{mid:(s,o)=>o.v.m, tot:(s,o)=>Math.abs(o.I.src)},
+  fail:{},
+  alt:(s,o)=>s.shape==="par"?`${s.n} parallel paths from ${s.V} volts to the floor, total ${amps(o.I.src)}.`:`${s.V} volts falling through ${s.R1} ohms then ${s.R2} ohms, ${s.veil?"middle hidden":"middle at "+volts(o.v.m)}${s.load?", load "+s.RL+" ohms":""}.`
+};
+const WALK=["g","e","a","ra","m","rb","c1","c2","f","g"];
+const reveal=s=>{ s.revealed=true; s.age=0; }, settledSoon=s=>BC.reduced||s.age>1.1;
 
 /* ---------- lessons ---------- */
 BC.LESSONS={
@@ -541,6 +596,58 @@ BC.LESSONS={
    ]
   }
  },
+ 2:{
+  xp:40, widget:net,
+  steps:[
+   {id:"mid",kind:"predict",prompt:"One fall, two slopes: 1 kΩ, then 4 kΩ. How high is the middle?",
+    insight:"Same flow through both, so each fall matches its resistance: 1 V, then 4 V.",
+    setup:s=>{s.R2=4000;s.veil=true;s.gauge=[1,2.5,4,5];}, ro:["V","I","mid"],
+    choices:[{t:"1 V"},{t:"2.5 V"},{t:"4 V",ok:1},{t:"5 V"}],
+    reveal:s=>{s.veil=false;s.gauge=null;reveal(s);}, settled:settledSoon},
+   {id:"ratio",kind:"hit",prompt:"Drag R₂ until the middle stands at 3.3 V.",
+    insight:"R₂ is about twice R₁, so the middle keeps two thirds of the height. That's a voltage divider.",
+    setup:s=>{s.R2=1000;}, ro:["mid"], sliders:[{k:"R2",label:"R₂",log:[220,10000],grip:{edge:"R2",sign:1}}],
+    target:{of:"mid",to:3.3,tol:.006,show:volts}, keep:(s,v)=>{v.r2=s.R2;}},
+   {id:"walk",kind:"do",prompt:"Walk the whole loop. Drag the marker back to where it started.",
+    insight:"Up 5 V, down 1.7 V, down 3.3 V. Any closed loop ends where it began.",
+    setup:(s,v)=>{s.R2=v.r2||1940;s.pos=0;}, ro:["at","up","down"], sliders:[{k:"pos",label:"Walk",min:0,max:1,step:.005,fmt:s=>Math.round(s.pos*100)+"%",grip:{walk:1}}],
+    goal:s=>s.pos>=1},
+   {id:"sag",kind:"predict",prompt:"Hang a 1 kΩ load off the middle. Its height...?",
+    insight:"The load is a second way down. More flow through R₁ means a bigger first fall.",
+    setup:(s,v)=>{s.R2=v.r2||1940;s.RL=1000;s.load=false;s.was=midOpen(s);}, ro:["mid","sag","I"],
+    choices:[{t:"Holds"},{t:"Rises"},{t:"Sags",ok:1},{t:"Hits 0 V"}],
+    reveal:s=>{s.load=true;reveal(s);}, settled:settledSoon},
+   {id:"light",kind:"do",prompt:"This load is heavy. Lighten it until the sag is under 10%.",
+    insight:"Sag fades once the load is about 10× R₁ ∥ R₂, here about 660 Ω.",
+    setup:(s,v)=>{s.R2=v.r2||1940;s.RL=100;s.load=true;s.was=midOpen(s);}, ro:["mid","sag"], sliders:[{k:"RL",label:"Load",log:[100,100000],grip:{edge:"RL",sign:1}}],
+    goal:(s,o)=>1-o.v.m/s.was<.0995, keep:(s,v)=>{v.rl=s.RL;}},
+   {id:"par",kind:"predict",prompt:"A 2 kΩ path opens beside the 1 kΩ. Total flow?",
+    insight:"Each path gets the full 5 V. 5 mA + 2.5 mA = 7.5 mA, joining where the paths meet.",
+    setup:s=>{s.shape="par";s.next=2;}, ro:["a","b","tot"],
+    choices:[{t:"1.67 mA"},{t:"5 mA"},{t:"7.5 mA",ok:1},{t:"10 mA"}],
+    reveal:s=>{s.n=2;reveal(s);}, settled:settledSoon},
+   {id:"size",kind:"hit",prompt:"Size the second path until the total reads 15 mA.",
+    insight:"It takes about 500 Ω. Together the paths pass like one 333 Ω, less than either.",
+    setup:s=>{s.shape="par";s.n=2;s.Rb=2000;}, ro:["a","b"], sliders:[{k:"Rb",label:"Path 2",log:[220,4700],grip:{edge:"Rb",sign:1}}],
+    target:{of:"tot",to:.015,tol:.015,show:amps}, keep:(s,v)=>{v.rb=s.Rb;}},
+   {id:"third",kind:"predict",prompt:"Open a third path, 1 kΩ. The total resistance...?",
+    insight:"Another way down: 20 mA from 5 V is 250 Ω, below every path.",
+    setup:s=>{s.shape="par";s.n=2;s.Rb=500;s.next=3;}, ro:["tot","Rt"], cols:3,
+    choices:[{t:"Rises"},{t:"Falls",ok:1},{t:"Holds"}],
+    reveal:s=>{s.n=3;s.next=0;reveal(s);}, settled:settledSoon}
+  ],
+  end:{
+   prompt:"These are the equations. Every number is yours.",
+   rows:[
+    {f:0,step:2,need:["r2"],show:v=>`${fmt(NET_R1,"Ω")} + ${fmt(v.r2,"Ω")} = ${fmt(NET_R1+v.r2,"Ω")}`},
+    {f:3,step:2,need:["r2"],show:v=>`${NET_V} V × ${fmt(v.r2,"Ω")} / ${fmt(NET_R1+v.r2,"Ω")} = ${volts(NET_V*v.r2/(NET_R1+v.r2))}`},
+    {eq:"ΣV around a loop = 0",what:"Kirchhoff's voltage law",step:3,need:["r2"],show:v=>{ const m=NET_V*v.r2/(NET_R1+v.r2); return `+${NET_V} − ${(NET_V-m).toFixed(2)} − ${m.toFixed(2)} = 0 V`; }},
+    {f:4,step:5,need:["r2","rl"],show:v=>{ const r=NET_R1*v.r2/(NET_R1+v.r2); return `${fmt(r,"Ω")}: your ${fmt(v.rl,"Ω")} load is ${(v.rl/r).toFixed(0)}×`; }},
+    {f:2,step:7,need:["rb"],show:v=>`${fmt(NET_R1,"Ω")} × ${fmt(v.rb,"Ω")} / ${fmt(NET_R1+v.rb,"Ω")} = ${fmt(NET_R1*v.rb/(NET_R1+v.rb),"Ω")}`},
+    {eq:"ΣI in = ΣI out",what:"Kirchhoff's current law",step:7,need:["rb"],show:v=>`${amps(NET_V/NET_R1)} + ${amps(NET_V/v.rb)} = ${amps(NET_V/NET_R1+NET_V/v.rb)}`}
+   ]
+  }
+ }
 };
 
 /* ---------- engine ---------- */
