@@ -657,6 +657,82 @@ const WALK=["g","e","a","ra","m","rb","c1","c2","f","g"];
 const reveal=s=>{ s.revealed=true; s.age=0; }, settledSoon=s=>BC.reduced||s.age>1.1;
 
 /* ---------- lessons ---------- */
+/* ---------- module 5: circuits with memory, stepped in real model time ----------
+   The supply is ideal. The relay-like coil is 100 mH and 120 Ω. The open switch leaks 3 kΩ: that stated path is what limits the spike. Display time is model time times s.slow. */
+const TK={V:9,R:1e5,C:1e-5}, CO={V:12,R:120,L:.1,Roff:3000,Vf:.7,Ron:.05,slow:1000,slowOpen:100000};
+const tauOf=s=>s.shape==="rl"?CO.L/(CO.R+(s.closed||s.diode?0:CO.Roff)):s.R*s.C;
+const tankBox=C=>.1+.085*Math.log10(C/1e-6);
+const secs=t=>t<=0?"0 s":fmt(t,"s",3);
+function tankCircuit(s){
+  const nodes={g:{at:[0,.8]},e:{at:[0,.8],flat:[0,.3]},n0:{at:[0,0]},sa:{at:[.16,0]},sb:{at:[.5,0]},ra:{at:[.62,0]},c:{at:[1.7,0]},tp:{at:[1.7,.38],flat:[1.7,.24]},tb:{at:[1.7,.38],flat:[1.7,.56]},f:{at:[1.7,.8]},j:{at:[.62,.8]},da:{at:[.62,.22]},db:{at:[.62,.54]}};
+  const marks=[{z:s.V}]; if(s.mark) marks.push({z:s.mark,t:Math.round(s.mark/s.V*100)+"%"});
+  const edges=[
+   {id:"src",t:"source",a:"g",b:"e",V:s.V,box:.15,tag:s.V+" V",tagOff:[0,-12],tagf:[-30,44]},
+   {id:"w0",t:"wire",a:"e",b:"n0"},{id:"w1",t:"wire",a:"n0",b:"sa"},
+   {id:"sw",t:"switch",a:"sa",b:"sb",closed:s.closed},
+   {id:"w2",t:"wire",a:"sb",b:"ra"},
+   {id:"R",t:"resistor",a:"ra",b:"c",R:s.R,label:fmt(s.R,"Ω"),lab:[-.3,.3],labf:[0,28]},
+   {id:"w3",t:"wire",a:"c",b:"tp"},
+   {id:"C",t:"capacitor",a:"tp",b:"tb",C:s.C,v0:s.vc,box:tankBox(s.C),rim:s.V+1.4,marks,capLabel:fmt(s.C,"F")},
+   {id:"w4",t:"wire",a:"tb",b:"f"},{id:"w5",t:"wire",a:"f",b:"j"},{id:"w6",t:"wire",a:"j",b:"g"}
+  ];
+  if(s.drainPath) edges.push({id:"w7",t:"wire",a:"ra",b:"da"},{id:"dr",t:"switch",a:"da",b:"db",closed:s.drain},{id:"w8",t:"wire",a:"db",b:"j"});
+  return {gnd:"g",vmax:12,iref:1.5e-4,pref:.5,rspan:[1e4,1e6],live:true,nodes,edges,clock:clockOf(s),trace:traceOf(s)};
+}
+function coilCircuit(s){
+  const nodes={g:{at:[0,.8]},e:{at:[0,.8],flat:[0,.3]},n0:{at:[0,0]},ra:{at:[.14,0],flat:[.25,0]},rb:{at:[.72,0],flat:[.8,0]},la:{at:[.86,0],flat:[1,0]},lb:{at:[1.84,0],flat:[1.7,0]},c1:{at:[2,0]},sa:{at:[2,.2]},sb:{at:[2,.52]},c2:{at:[2,.8]}};
+  const edges=[
+   {id:"src",t:"source",a:"g",b:"e",V:CO.V,box:.15,tag:CO.V+" V",tagOff:[0,-12],tagf:[-30,44]},
+   {id:"w0",t:"wire",a:"e",b:"n0"},{id:"w1",t:"wire",a:"n0",b:"ra"},
+   {id:"R",t:"resistor",a:"ra",b:"rb",R:CO.R,rating:2,label:fmt(CO.R,"Ω"),lab:[0,.25],labf:[0,28]},
+   {id:"w2",t:"wire",a:"rb",b:"la"},
+   {id:"L",t:"inductor",a:"la",b:"lb",L:CO.L,i0:s.iL,label:fmt(CO.L,"H"),lab:[.04,.2],labf:[0,28]},
+   {id:"w3",t:"wire",a:"lb",b:"c1"},{id:"w4",t:"wire",a:"c1",b:"sa"},
+   {id:"sw",t:"switch",a:"sa",b:"sb",closed:s.closed,Roff:CO.Roff,label:s.leak?fmt(CO.Roff,"Ω")+" leak":null,lab:[-.66,.08],labf:[-92,0]},
+   {id:"w5",t:"wire",a:"sb",b:"c2"},{id:"w6",t:"wire",a:"c2",b:"g"}
+  ];
+  if(s.diodeOn) edges.push({id:"D",t:"diode",a:"c1",b:"n0",via:[[2,-.13,1.9,.2],[0,-.13,.1,.2]],Vf:CO.Vf,Ron:CO.Ron,ghost:!s.diode});
+  return {gnd:"g",vmax:s.vm,iref:.1,live:true,nodes,edges,clock:clockOf(s),trace:traceOf(s)};
+}
+const clockOf=s=>({t:"t = "+secs(s.t),scale:(s.slow>1?`shown ${s.slow.toLocaleString("en")}× slower`:"real speed")+(BC.reduced?", in steps":"")});
+function traceOf(s){
+  if(s.shape==="rl"&&s.leak&&!s.diodeOn&&s.closed) return null;   /* the spike's plot takes its corner when the spike comes */
+  if(s.shape==="rc"){ const tau=s.R*s.C, guides=[{y:s.V,t:s.V+" V"}]; if(s.mark) guides.push({y:s.mark}); return {label:"Level",pts:s.tr,tMax:5*tau,yMax:s.V*1.06,guides,ticks:[tau,2*tau,3*tau,4*tau]}; }
+  if(s.closed&&s.trI){ const tau=CO.L/CO.R; return {label:"Flow",pts:s.tr,tMax:5*tau,yMax:.11,guides:[{y:.1,t:"100 mA"}],ticks:[tau,2*tau,3*tau,4*tau]}; }
+  const tau=tauOf(s); return {side:s.diode?"right":"left",label:"Gap height",pts:s.tr,tMax:5*tau,yMax:s.diode?18:1.04*CO.V/CO.R*CO.Roff,guides:[{y:CO.V,t:s.diode?CO.V+" V":null}]};
+}
+/* throw the coil's switch open: time slows to the new, far shorter timescale unless the diode keeps it slow */
+function openCoil(s){ s.closed=false; s.stop=null; s.t=0; s.tr=[]; s.trI=false; s.peak=0; s.slow=s.diode?CO.slow:CO.slowOpen; if(!s.diode){ s.vm=Math.max(18,s.iL*CO.Roff/1.7); s.spiked=true; } }
+const timed={
+  circuit:s=>s.shape==="rl"?coilCircuit(s):tankCircuit(s),
+  fresh:()=>({shape:"rc",V:TK.V,R:TK.R,C:TK.C,closed:false,drain:false,drainPath:false,vc:0,iL:0,diode:false,diodeOn:false,leak:false,t:0,slow:1,hold:0,stop:null,retime:false,key:0,fillT:null,tr:[],trI:false,peak:0,gapV:0,vm:18,mark:0,atTau:null,spiked:false}),
+  running:s=>(s.closed||s.drain||(s.shape==="rl"&&Math.abs(s.iL)>1e-6))&&(s.stop===null||s.t<s.stop-1e-12)&&s.t<8*tauOf(s),
+  quantum:s=>tauOf(s)*.25*s.slow,
+  tick(s,sol,dt){
+    if(s.retime&&s.R*s.C!==s.key){ s.key=s.R*s.C; s.t=0; s.vc=0; s.fillT=null; s.tr=[]; s.hold=BC.reduced?0:.3; }
+    if(s.shape==="rl"&&sol.v.sa!==undefined){ s.gapV=sol.v.sa; s.peak=Math.max(s.peak,s.gapV); }
+    let ev=null; if(s.spiked){ s.spiked=false; ev="spike"; }
+    if(!dt||!timed.running(s)) return ev;
+    if(s.hold>0){ s.hold-=dt; return ev; }
+    const tau=tauOf(s); let run=dt/s.slow;
+    if(s.t<tau) run=Math.min(run,tau-s.t);   /* land exactly on one time constant */
+    if(s.stop!==null) run=Math.min(run,s.stop-s.t);
+    const d=timed.circuit(s), o=timeStep(d,run,tau/800,BC.reduced?256:16); s.t+=run;
+    if(s.shape==="rl"){ s.iL=d.edges.find(e=>e.id==="L").i0; } else { s.vc=d.edges.find(e=>e.id==="C").v0; if(s.retime&&s.fillT===null&&s.vc>=.95*s.V) s.fillT=s.t; }
+    if(s.atTau===null&&s.t>=tau-1e-12) s.atTau=s.vc;
+    const y=s.shape==="rc"?s.vc:s.trI?Math.abs(s.iL):o.v.sa, n=s.tr.length, tr=traceOf(s); if(tr&&(!n||s.t-s.tr[n-1][0]>=tr.tMax/240)) s.tr.push([s.t,y]);
+    return ev;
+  },
+  busy:()=>false,
+  ro:{
+   level:["Tank level",s=>volts(+s.vc.toFixed(3))], flow:["Flow",(s,o)=>amps(o.I.R)], pct:["Filled",s=>Math.round(s.vc/s.V*100)+"%"],
+   fill:["To 95%",s=>s.fillT===null?"—":s.fillT.toFixed(2)+" s"], gap:["At the gap",s=>volts(+s.gapV.toFixed(2))], peak:["Peak",s=>s.peak>.05&&!s.closed?volts(+s.peak.toFixed(2)):"—"]
+  },
+  val:{fill:s=>s.fillT},
+  fail:{spike:"sw"}, clean:{spike:true},
+  alt:(s,o)=>s.shape==="rc"?`time ${secs(s.t)}, tank level ${volts(s.vc)} of ${s.V} volts, flow ${amps(o.I.R)}, ${s.R} ohms, ${fmt(s.C,"F")}.`:`time ${secs(s.t)}, ${s.slow} times slower, switch ${s.closed?"closed":"open"}, flow ${amps(o.I.R)}, height at the gap ${volts(s.gapV)}.`
+};
+
 BC.LESSONS={
  1:{
   xp:40, widget:loop, hotspot:{a:"sa",b:"sb"},
@@ -763,6 +839,66 @@ BC.LESSONS={
     {f:4,step:5,need:["r2","rl"],show:v=>{ const r=NET_R1*v.r2/(NET_R1+v.r2); return `${fmt(r,"Ω")}: your ${fmt(v.rl,"Ω")} load is ${(v.rl/r).toFixed(0)}×`; }},
     {f:2,step:7,need:["rb"],show:v=>`${fmt(NET_R1,"Ω")} × ${fmt(v.rb,"Ω")} / ${fmt(NET_R1+v.rb,"Ω")} = ${fmt(NET_R1*v.rb/(NET_R1+v.rb),"Ω")}`},
     {eq:"ΣI in = ΣI out",what:"Kirchhoff's current law",step:7,need:["rb"],show:v=>`${amps(NET_V/NET_R1)} + ${amps(NET_V/v.rb)} = ${amps(NET_V/NET_R1+NET_V/v.rb)}`}
+   ]
+  }
+ },
+ 5:{
+  xp:40, widget:timed, hotspot:{a:"sa",b:"sb"},
+  steps:[
+   {id:"instant",kind:"predict",prompt:"The tank is empty. The moment the switch closes, the flow is...?",
+    insight:"Empty tank, full height difference: the biggest flow comes first. The level hasn't moved yet.",
+    setup:()=>{}, ro:["level","flow"], cols:3,
+    choices:[{t:"None yet"},{t:"Its biggest",ok:1},{t:"About half"}],
+    reveal:s=>{s.closed=true;s.hold=BC.reduced?.5:1.3;}, settled:s=>s.hold<=0||BC.reduced},
+   {id:"fill",kind:"do",prompt:"Close the switch. Watch the stream until it dies.",
+    insight:"Level up, slope flatter, stream thinner. When the level meets the supply: no slope, no flow.",
+    setup:()=>{}, ro:["level","flow","pct"], hot:true,
+    actions:[{label:s=>s.closed?"Open switch":"Close switch",run:s=>{s.closed=!s.closed;}}],
+    goal:s=>s.vc>=.98*s.V},
+   {id:"dragR",kind:"hit",prompt:"Drag R until the tank fills in 3 s.",
+    insight:"More resistance starves the flow. Same tank, same level, a longer wait.",
+    setup:s=>{s.closed=true;s.retime=true;s.R=22000;}, ro:["flow","fill"], sliders:[{k:"R",label:"R",log:[1e4,1e6],grip:{edge:"R"}}],
+    target:{of:"fill",to:3,tol:.1,show:t=>t+" s"}, keep:(s,v)=>{v.hitR=s.R;v.hitT=s.fillT;}},
+   {id:"dragC",kind:"hit",prompt:"R is fixed now. Size the tank until it fills in 3 s.",
+    insight:"Smaller tank, less to fill. Resistance and size trade off: together they set the time.",
+    setup:s=>{s.closed=true;s.retime=true;s.R=47000;s.C=47e-6;}, ro:["flow","fill"], sliders:[{k:"C",label:"Tank",log:[1e-6,1e-4],fmt:s=>fmt(s.C,"F"),grip:{edge:"C"}}],
+    target:{of:"fill",to:3,tol:.1,show:t=>t+" s"}, keep:(s,v)=>{v.hitC=s.C;}},
+   {id:"drain",kind:"predict",prompt:"A full tank starts draining through R. Its level falls...?",
+    insight:"High level, big flow, fast fall. As the level drops, so does the flow.",
+    setup:s=>{s.vc=s.V;s.drainPath=true;}, ro:["level","flow"], cols:3,
+    choices:[{t:"Straight down"},{t:"Fast, then slow",ok:1},{t:"Slow, then fast"}],
+    reveal:s=>{s.drain=true;}, settled:s=>s.t>=3*s.R*s.C, keep:(s,v)=>{v.drained=s.atTau;}},
+   {id:"tau",kind:"predict",prompt:"τ is this pair's own unit of time. After one τ, the tank is...?",
+    insight:"63% every time, any R, any tank. Each τ closes 63% of the gap left.",
+    setup:s=>{s.stop=s.R*s.C;}, ro:["level","pct"], cols:2,
+    choices:[{t:"50% full"},{t:"63% full",ok:1},{t:"75% full"},{t:"90% full"}],
+    reveal:s=>{s.closed=true;}, settled:s=>{ if(s.t>=s.stop-1e-12){ s.mark=s.vc; return true; } return false; }, keep:(s,v)=>{v.v63=s.vc;}},
+   {id:"build",kind:"do",prompt:"A heavy flywheel joins the stream. Close the switch and watch the flow.",
+    insight:"At first the wheel holds the whole height. As it spins up, its slope flattens.",
+    setup:s=>{s.shape="rl";s.slow=CO.slow;s.trI=true;s.closed=false;}, ro:["flow","gap"], hot:true,
+    actions:[{label:s=>s.closed?"Switch closed":"Close switch",run:s=>{ if(!s.closed){ s.closed=true; s.t=0; s.tr=[]; } }}],
+    goal:s=>s.iL>=.95*CO.V/CO.R, keep:(s,v)=>{v.tauL=CO.L/CO.R;}},
+   {id:"spike",kind:"predict",prompt:"Full flow, wheel spinning. Open the switch. The height at the gap...?",
+    insight:"The wheel won't stop. It drives flow across the gap, lifting it to 300 V.",
+    setup:s=>{s.shape="rl";s.slow=CO.slow;s.closed=true;s.iL=CO.V/CO.R;s.trI=true;s.leak=true;s.stop=0;}, ro:["flow","gap","peak"], cols:3,
+    choices:[{t:"Falls to 0 V"},{t:"Stays 12 V"},{t:"Far above",ok:1}],
+    reveal:s=>openCoil(s), settled:s=>s.t>=tauOf(s), keep:(s,v)=>{v.peak=s.peak;v.Iopen=CO.V/CO.R;}},
+   {id:"diode",kind:"do",prompt:"Bridge the coil with a diode, then open the switch.",
+    insight:"Flow loops round through the diode. The gap stops near 12.7 V; the wheel spends itself gently.",
+    setup:s=>{s.shape="rl";s.slow=CO.slow;s.closed=true;s.iL=CO.V/CO.R;s.trI=true;s.leak=true;s.stop=0;s.diodeOn=true;}, ro:["flow","gap","peak"],
+    actions:[{label:()=>"Add the diode",when:s=>!s.diode,run:s=>{s.diode=true;}},{label:()=>"Open switch",when:s=>s.diode&&s.closed,run:s=>openCoil(s)}],
+    goal:s=>!s.closed&&s.t>=tauOf(s)*.5, keep:(s,v)=>{v.clamp=s.peak;}}
+  ],
+  end:{
+   prompt:"These are the equations. Every number is yours.",
+   rows:[
+    {f:0,step:3,need:["hitR"],show:v=>`${fmt(v.hitR,"Ω")} × ${fmt(TK.C,"F")} = ${secs(v.hitR*TK.C)}`},
+    {f:1,step:6,need:["v63"],show:v=>`${TK.V} V × (1 − e⁻¹) = ${fmt(v.v63,"V",3)}`},
+    {f:2,step:5,need:["drained"],show:v=>`${TK.V} V × e⁻¹ = ${fmt(v.drained,"V",3)}`},
+    {f:4,step:4,need:["hitC"],show:v=>`½ × ${fmt(v.hitC,"F")} × (${TK.V} V)² = ${fmt(.5*v.hitC*TK.V*TK.V,"J",3)}`},
+    {f:5,step:7,need:["tauL"],show:v=>`${fmt(CO.L,"H")} / ${fmt(CO.R,"Ω")} = ${secs(v.tauL)}`},
+    {eq:"V = I · R",what:"The spike: your flow through the gap's stated leak",step:8,need:["peak","Iopen"],show:v=>`${amps(v.Iopen)} × ${fmt(CO.Roff,"Ω")} = ${fmt(v.peak,"V",3)}`},
+    {eq:"V = Vs + Vf",what:"With the diode, the clamp",step:9,need:["clamp"],show:v=>`${CO.V} V + ${CO.Vf} V = ${fmt(v.clamp,"V",3)}`}
    ]
   }
  }
