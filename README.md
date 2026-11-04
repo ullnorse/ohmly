@@ -93,6 +93,8 @@ Parts with memory are companion models. `capacitor` holds `v0`, draws as a glass
 
 `opamp` is a tall tower from the floor to the output, stiff (1 mΩ) and set by `flip` with a secant on the whole circuit so the two inputs `ctl` and `ctl2` come out level; `lo` and `hi` clamp it to the rails (±9 V, gain 1e5, no input current), and both inputs draw dashed control lines.
 
+`emf` is a motor's back-EMF: a stiff tower from the floor node `a` to `b` at height `E`, with a wheel on top and the flow chevrons running down; `w` is the wheel's turn in rad/s. `motor` is the winding `R` and `E` in one edge, drawn as a ramp with a wheel (`pw` sets its glow); the lesson steps ω from J dω/dt = k·I − load − b·ω. A `switch` with `Ron` conducts through that resistance when closed. Any edge may carry `pw`, its heat in watts. A lesson step with three or more `actions` lays them out two by two.
+
 `ic555` is the 555 as a block: a stiff output tower from `a` (a floor node) to `b` (the OUT pin), `V`, `hi` (output high), `pins: {vcc, gnd, thr, dis?}` (node ids). The widget flips `hi` at 2/3 and 1/3 of the supply and closes a `nosch` switch for DIS. The Schematic draws a labelled box with the pins wired to their nodes. A `trace` with `flatOff: 1` fades out in the Schematic.
 
 `ldo` is an ideal linear regulator: `Vreg`, `Vdo`, `Rdo` and `Iset` (the load's flow); it passes `Iset` from input to output until headroom falls under `Vdo`, and its glow is (Vin - Vout) x I. The AC source is a `source` (`ac: 1` draws the sine symbol) whose `V` the widget sets each step; `trace.pts2` adds a dashed second line.

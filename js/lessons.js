@@ -18,11 +18,14 @@ const TYPES={
   stray:{g:e=>e.G,j:e=>e.G*e.V,solid:()=>{},symbol:()=>{}},
   wire:{g:e=>e.ghost?0:WIRE_G, solid:c=>c.run({hw:c.e.hw}), symbol:c=>c.line()},
   resistor:{g:e=>e.open||e.ghost?0:1/e.R, solid:solidResistor, symbol:symResistor},
-  switch:{g:e=>e.closed?WIRE_G:e.Roff?1/e.Roff:0, solid:solidSwitch, symbol:symSwitch},
+  switch:{g:e=>e.closed?(e.Ron?1/e.Ron:WIRE_G):e.Roff?1/e.Roff:0, solid:solidSwitch, symbol:symSwitch},
   fuse:{g:e=>e.blown?0:WIRE_G, solid:solidFuse, symbol:symFuse},
   source:{solid:solidSource, symbol:symSource},
   capacitor:{tall:true, g:(e,h)=>e.C/h, j:(e,h)=>-e.C/h*(e.v0||0), commit:(e,v)=>{ e.v0=v[e.a]-v[e.b]; }, solid:c=>c.tank(), symbol:symCap},
   inductor:{g:(e,h)=>h/e.L, j:e=>e.i0||0, commit:(e,v,I)=>{ e.i0=I[e.id]; }, solid:c=>c.wheel(), symbol:symCoil},
+  /* a motor: winding R in series with a back-EMF E (set by the widget from speed). emf is the E alone, a stiff tower from the floor node a to b; motor is R and E in one edge with a wheel on its ramp. w is the wheel's turn in rad/s. */
+  emf:{tall:true, g:()=>WIRE_G, j:e=>WIRE_G*e.E, solid:c=>c.tower(), symbol:symMotor},
+  motor:{hot:1, g:e=>1/e.R, j:e=>-e.E/e.R, solid:c=>c.wheel({style:"ramp",hw:c.chute,heat:c.glow}), symbol:symMotor},
   /* an ideal drop Vf in series with Ron when on; open when off. A part with Vz also breaks down in reverse (on === "z") and holds Vz. dead = burnt open. */
   diode:{hot:1, g:e=>!e.ghost&&!e.dead&&e.on?1/e.Ron:0, j:e=>e.ghost||e.dead||!e.on?0:e.on==="z"?e.Vz/e.Ron:-e.Vf/e.Ron,
     flip:(e,v,I)=>{ if(e.ghost||e.dead) return false; const vd=v[e.a]-v[e.b], was=e.on||false; let on=false;
@@ -136,6 +139,12 @@ function symCoil(c){
   const {g,p}=c, a=p[0], b=p[p.length-1], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L, n=4, r=Math.min(11,L/(2*n+2)), an=Math.atan2(dy,dx);
   g.strokeStyle=PAL.inkS; g.lineWidth=2.5; g.beginPath(); g.moveTo(a[0],a[1]); const s=L/2-n*r; g.lineTo(a[0]+ux*s,a[1]+uy*s); for(let i=0;i<n;i++){ const t=s+r*(2*i+1); g.arc(a[0]+ux*t,a[1]+uy*t,r,an+Math.PI,an+2*Math.PI); } g.lineTo(b[0],b[1]); g.stroke();
 }
+function symMotor(c){
+  const {g,p}=c, a=p[0], b=p[p.length-1], x=(a[0]+b[0])/2, y=(a[1]+b[1])/2, L=Math.hypot(b[0]-a[0],b[1]-a[1])||1, ux=(b[0]-a[0])/L, uy=(b[1]-a[1])/L, R=17, P=PAL;
+  g.strokeStyle=P.inkS; g.lineWidth=2.5; g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(x-ux*R,y-uy*R); g.moveTo(x+ux*R,y+uy*R); g.lineTo(b[0],b[1]); g.stroke();
+  g.fillStyle=P.bgS; g.beginPath(); g.arc(x,y,R,0,7); g.fill(); g.stroke();
+  g.fillStyle=P.inkS; g.font=`600 16px ${c.font}`; g.textAlign="center"; g.textBaseline="middle"; g.fillText("M",x,y+1); g.textBaseline="alphabetic";
+}
 function symDiode(c){
   const {g,p}=c, P=PAL; let a=p[0], b=p[1], best=0; for(let i=0;i<p.length-1;i++){ const l=Math.hypot(p[i][0]-p[i+1][0],p[i][1]-p[i+1][1]); if(l>best){ best=l; a=p[i]; b=p[i+1]; } }
   g.strokeStyle=P.inkS; g.lineWidth=2.5; g.lineJoin="round"; g.beginPath(); p.forEach((q,i)=>i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1])); g.stroke();
@@ -209,7 +218,7 @@ function Terrain(stage){
     return T.sol; };
   const swing0=e=>{ const P=TYPES[e.t]; return P.gate?1-P.gate(e,T.sol.I[e.id]||0):e.closed?0:1; };
   const settle=()=>{ const D=T.desc; T.vm=D.vmax||18; for(const k in T.sol.v){ T.zs[k]=T.sol.v[k]; T.zv[k]=0; } for(const e of D.edges){ T.heat[e.id]=heatTarget(e); T.flow[e.id]=Math.abs(T.sol.I[e.id]||0); T.pres[e.id]=e.ghost?0:1; T.swing[e.id]=swing0(e); } };
-  const heatTarget=e=>{ if(e.open||e.ghost||e.dead) return 0; const I=T.sol.I[e.id]; if(e.t==="resistor") return (e.pw!==undefined?e.pw:I*I*e.R)/(e.rating||T.desc.pref||2); if(TYPES[e.t].hot){ const v=T.sol.v; return Math.abs(I*(v[e.a]-v[e.b]))/(e.rating||T.desc.pref||2); } return 0; };
+  const heatTarget=e=>{ if(e.open||e.ghost||e.dead) return 0; const I=T.sol.I[e.id]; if(e.pw!==undefined) return e.pw/(e.rating||T.desc.pref||2); if(e.t==="resistor") return I*I*e.R/(e.rating||T.desc.pref||2); if(TYPES[e.t].hot){ const v=T.sol.v; return Math.abs(I*(v[e.a]-v[e.b]))/(e.rating||T.desc.pref||2); } return 0; };
   /* everything comes up out of the floor when the picture first appears */
   T.rise=()=>{ if(!BC.reduced) T.pres={}; };
   T.setView=v=>{ viewPref=v; T.target=v==="height"?0:1; if(BC.reduced) T.m=T.target; };
@@ -271,11 +280,11 @@ function Terrain(stage){
     c.capsule=(t0,t1)=>{ const A=lerpP(run[0],run[run.length-1],t0), B=lerpP(run[0],run[run.length-1],t1), lift=9/geo.hs*pr; boxes.push(mkBox(e.id+":f",{...A,z:A.z+lift},{...B,z:B.z+lift},{style:"tower",hw:HW*.62,base:A.z})); };
     c.tower=()=>{ const n=D.nodes[e.a].at, s=e.box||HW, z=(T.zs[e.b]||0)*pr, Fa=nodeF(D.nodes[e.a]), Fb=nodeF(D.nodes[e.b]);
       const mkP=(u)=>({u,v:n[1],z,fu:(Fa[0]+Fb[0])/2,fv:(Fa[1]+Fb[1])/2});
-      const inner=D.edges.find(x=>x.inner), hot=inner?Math.sqrt(T.heat[inner.id]||0):0; boxes.push(mkBox(e.id+":t",mkP(n[0]-s),mkP(n[0]+s),{style:"tower",hw:s,heat:hot>.25?hot*.8:0,after:(gg)=>towerMarks(gg,e,n,s,z)})); };
+      const inner=D.edges.find(x=>x.inner), hot=inner?Math.sqrt(T.heat[inner.id]||0):0; boxes.push(mkBox(e.id+":t",mkP(n[0]-s),mkP(n[0]+s),{style:"tower",hw:s,heat:hot>.25?hot*.8:0,after:(gg)=>{ towerMarks(gg,e,n,s,z); if(e.t==="emf") wheel(gg,e,[{u:n[0],v:n[1],z}]); }})); };
     /* a tank is a glass box on the floor: its footprint is its capacitance, its water level its voltage */
     c.tank=()=>{ const n=D.nodes[e.a].at, s=e.box||.2, z=Math.max(0,(T.zs[e.a]||0)-(T.zs[e.b]||0))*pr, Fa=nodeF(D.nodes[e.a]), Fb=nodeF(D.nodes[e.b]), mkP=u=>({u,v:n[1],z,fu:(Fa[0]+Fb[0])/2,fv:(Fa[1]+Fb[1])/2});
       boxes.push(mkBox(e.id+":w",mkP(n[0]-s),mkP(n[0]+s),{style:"water",hw:s,after:gg=>glass(gg,e,n,s,z)})); };
-    c.wheel=()=>{ c.run({hw:e.hw,after:gg=>wheel(gg,e,run)}); };
+    c.wheel=o=>{ c.run({hw:e.hw,...o,after:gg=>wheel(gg,e,run)}); };
     /* the diode's arrow, once, on its longest run */
     c.chevron=()=>{ let box=null, best=0; boxes.forEach(b=>{ if(b.id.startsWith(e.id+":")){ const l=Math.hypot(b.A.u-b.B.u,b.A.v-b.B.v); if(l>best){ best=l; box=b; } } }); if(!box) return;
       box.after=gg=>{ const mid=lerpP(box.A,box.B,.5), du=box.B.u-box.A.u, dv=box.B.v-box.A.v, L=Math.hypot(du,dv)||1, X=du/L, Y=dv/L, S=HW*.55, q=(f,s)=>iso(mid.u+X*f*S-Y*s*S,mid.v+Y*f*S+X*s*S,mid.z), a=q(-1,-1), m=q(1,0), b=q(-1,1), a2=q(1,-1), b2=q(1,1); gg.fillStyle=PAL.inkS; gg.beginPath(); gg.moveTo(a[0],a[1]); gg.lineTo(m[0],m[1]); gg.lineTo(b[0],b[1]); gg.closePath(); gg.fill(); gg.strokeStyle=PAL.inkS; gg.lineWidth=2.5; gg.beginPath(); gg.moveTo(a2[0],a2[1]); gg.lineTo(b2[0],b2[1]); gg.stroke(); }; };
@@ -306,7 +315,7 @@ function Terrain(stage){
   let tagQ=[];
   function towerMarks(g,e,n,s,z){
     const P=PAL, hs=geo.hs, u=n[0]+s, H=z*hs; if(Math.abs(H)<3) return;
-    if(e.tag){ const q=iso(n[0],n[1],z), up=z<0?1:-1; tagQ.push({t:e.tag,x:q[0],y:q[1]+up*(s*geo.sc*geo.k+12)}); }
+    if(e.tag&&e.t!=="emf"){ const q=iso(n[0],n[1],z), up=z<0?1:-1; tagQ.push({t:e.tag,x:q[0],y:q[1]+up*(s*geo.sc*geo.k+12)}); }
     /* below the floor: notches on the shaft's back wall */
     if(z<0){ const vB=n[1]-s; g.lineWidth=1; g.strokeStyle=rgb(P.towE,.55); g.beginPath(); for(let k=-1;k>z+.02;k--){ const a=iso(n[0]-s,vB,k), b=iso(n[0]+s,vB,k); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); } g.stroke(); return; }
     const fx=(v,zz)=>iso(u,v,zz);
@@ -318,7 +327,8 @@ function Terrain(stage){
     const ph=on&&!BC.reduced?(T.phi[e.id]||0)%spacing:spacing*.4;
     g.lineWidth=clamp(geo.sc*.009,1.6,3.2); g.lineCap="round"; g.lineJoin="round"; g.strokeStyle=on?P.accentS:rgb(P.muted,.55); g.beginPath();
     const rise=clamp(geo.sc*.03,4,10);
-    for(let y=ph;y<H-2;y+=spacing){ const zc=y/hs, zl=Math.max(0,(y-rise)/hs), a=fx(n[1]-wid,zl), b=fx(n[1],zc), c=fx(n[1]+wid,zl); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.lineTo(c[0],c[1]); } g.stroke(); g.lineCap="butt";
+    if(e.t==="emf") for(let y=H-ph;y>2;y-=spacing){ const zc=y/hs, zl=Math.min(H/hs,(y+rise)/hs), a=fx(n[1]-wid,zl), b=fx(n[1],zc), c=fx(n[1]+wid,zl); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.lineTo(c[0],c[1]); }   /* the flow goes down a back-EMF tower */
+    else for(let y=ph;y<H-2;y+=spacing){ const zc=y/hs, zl=Math.max(0,(y-rise)/hs), a=fx(n[1]-wid,zl), b=fx(n[1],zc), c=fx(n[1]+wid,zl); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.lineTo(c[0],c[1]); } g.stroke(); g.lineCap="butt";
   }
   /* painter's order from plan overlap: a box is behind another if it ends before the other starts along u or v */
   function orderBoxes(){
@@ -593,7 +603,7 @@ function Terrain(stage){
     const live={}; D.edges.forEach(e=>live[e.id]=1); Object.keys(T.pres).forEach(k=>{ if(!live[k]){ delete T.pres[k]; delete T.flow[k]; delete T.heat[k]; delete T.swing[k]; } });
     if(BC.reduced){ settle(); return; }
     const vt=D.vmax||18; T.vm=Math.abs(T.vm-vt)<.05?vt:T.vm+(vt-T.vm)*(1-Math.exp(-dt*5));
-    D.edges.forEach(e=>{ if(e.t==="inductor") T.spin[e.id]=(T.spin[e.id]||0)-(T.sol.I[e.id]||0)/(D.iref||.05)*7*dt; });
+    D.edges.forEach(e=>{ if(e.t==="inductor") T.spin[e.id]=(T.spin[e.id]||0)-(T.sol.I[e.id]||0)/(D.iref||.05)*7*dt; else if(e.w!==undefined) T.spin[e.id]=(T.spin[e.id]||0)-e.w*dt; });
     /* heights ride a damped spring: a ledge dropping lands with a little weight. A live circuit has its own time, so its heights only smooth over a jump. */
     const K=110, C=2*.74*Math.sqrt(K);
     if(D.live){ const a=1-Math.exp(-dt*26); for(const k in T.sol.v){ const tg=T.sol.v[k], z=T.zs[k]===undefined?tg:T.zs[k]; T.zs[k]=z+(tg-z)*a; T.zv[k]=0; } }
@@ -1287,6 +1297,76 @@ const ac={
     :`${AC.pkx} volt peak source at ${Math.round(s.f)} hertz across a ${s.mode==="tank"?fmt(AC.C,"F")+" tank":fmt(AC.L,"H")+" flywheel"}, peak flow ${s.ipk===null?"unknown":fmt(+s.ipk.toPrecision(3),"A")}.`
 };
 
+/* ---------- module 13: a motor builds its own tower ----------
+   Stated model, a 6 V hobby motor. Winding R = 1 Ω; back-EMF E = k·ω and torque = k·I with k = 0.006 V·s/rad; friction b = 2 µN·m·s; rotor J = 0.42 µkg·m².
+   J dω/dt = k·I − load − b·ω, so ω settles at (kV/R − load)/(k²/R + b) with time constant J/(k²/R + b) = 11 ms. Time is shown 60× slower (2 s to spin up), and the wheel turns at ω/60.
+   No load: 9050 rpm at 0.32 A. Stalled: 6 A, 36 W. The bridge's switches are 5 mΩ each and its fuse is 15 A. */
+const MT={V:6,R:1,k:.006,b:2e-6,J:4.2e-7,slow:60,rated:6,fuse:15,Ron:.005};
+const MTAU=MT.J/(MT.k*MT.k/MT.R+MT.b);
+const mWss=(V,L)=>(MT.k*V/MT.R-L)/(MT.k*MT.k/MT.R+MT.b), mIss=(V,L)=>(V-MT.k*mWss(V,L))/MT.R;
+const rpmOf=w=>Math.abs(w)*60/(2*Math.PI), rpmTxt=w=>(w<-.5?"−":"")+Math.round(rpmOf(w)/10)*10+" rpm", mNm=x=>Math.round(x*1000)+" mN·m";
+const motI=(s,o)=>s.shape==="bridge"?o.I.M:o.I.Rw;
+function motDC(s){
+  const E=MT.k*s.w, nodes={g:{at:[0,.8]},e:{at:[0,.8],flat:[0,.3]},n0:{at:[0,0]},sa:{at:[.16,0]},sb:{at:[.5,0]},ra:{at:[.62,0],flat:[.7,0]},rb:{at:[1.7,0],flat:[1.3,0]},c1:{at:[2,0]},mg:{at:[2,.8]},m:{at:[2,.8],flat:[2,.3]}};
+  const edges=[
+   {id:"src",t:"source",a:"g",b:"e",V:s.V,box:.15,tag:s.V.toFixed(s.V%1?1:0)+" V",tagOff:[0,-12],tagf:[-30,44]},
+   {id:"w0",t:"wire",a:"e",b:"n0"},{id:"w1",t:"wire",a:"n0",b:"sa"},
+   {id:"sw",t:"switch",a:"sa",b:"sb",closed:s.closed},{id:"w2",t:"wire",a:"sb",b:"ra"},
+   {id:"Rw",t:"resistor",a:"ra",b:"rb",R:MT.R,rating:MT.rated,label:"winding "+fmt(MT.R,"Ω"),lab:[-.45,.25],labf:[0,28]},
+   {id:"w3",t:"wire",a:"rb",b:"c1"},{id:"w4",t:"wire",a:"c1",b:"m"},
+   {id:"M",t:"emf",a:"mg",b:"m",E,w:s.w/MT.slow,box:.15,tag:volts(+E.toFixed(2)),tagOff:[58,0],tagf:[30,44]},
+   {id:"w5",t:"wire",a:"mg",b:"g"}];
+  return {gnd:"g",vmax:7,iref:2,live:true,nodes,edges,clock:motClock(),trace:s.trace?{label:"Current",pts:s.tr,tMax:5*MTAU,yMax:6.4,guides:[{y:MT.V/MT.R,t:"6 A"}]}:null};
+}
+function motBridge(s){
+  const nodes={g:{at:[0,1]},e:{at:[0,1],flat:[0,.55]},n0:{at:[0,0]},f1:{at:[.25,0]},f2:{at:[.62,0]},tl:{at:[1.1,0]},tr:{at:[2.3,0]},A:{at:[1.1,.5]},B:{at:[2.3,.5]},bl:{at:[1.1,1]},br:{at:[2.3,1]}};
+  /* each switch sits on a short blade between two wires, so the schematic keeps the blade symbol small */
+  const leg=(id,top,bot,u,v0,v1,x)=>{ nodes[id+"a"]={at:[u,v0]}; nodes[id+"b"]={at:[u,v1]};
+    return [{id:id+"w",t:"wire",a:top,b:id+"a"},{id,t:"switch",a:id+"a",b:id+"b",closed:s[id.toLowerCase()],Ron:MT.Ron,label:id,lab:[x,0],labf:[x*110,0]},{id:id+"v",t:"wire",a:id+"b",b:bot}]; };
+  const edges=[
+   {id:"src",t:"source",a:"g",b:"e",V:MT.V,box:.15,tag:MT.V+" V",tagOff:[0,-12],tagf:[-30,44]},
+   {id:"w0",t:"wire",a:"e",b:"n0"},{id:"w1",t:"wire",a:"n0",b:"f1"},
+   {id:"fu",t:"fuse",a:"f1",b:"f2",blown:s.fuse==="blown",label:s.fuse==="blown"?"blown":MT.fuse+" A",lab:[0,-.2],labf:[0,-24]},
+   {id:"w2",t:"wire",a:"f2",b:"tl"},{id:"w3",t:"wire",a:"tl",b:"tr"},
+   {id:"M",t:"motor",a:"A",b:"B",R:MT.R,E:MT.k*s.w,w:s.w/MT.slow,rating:MT.rated,pw:s.Im*s.Im*MT.R},
+   {id:"w4",t:"wire",a:"bl",b:"br"},{id:"w5",t:"wire",a:"g",b:"bl"}];
+  edges.push(...leg("S1","tl","A",1.1,.1,.38,-.2),...leg("S3","A","bl",1.1,.62,.9,-.2),...leg("S2","tr","B",2.3,.1,.38,.2),...leg("S4","B","br",2.3,.62,.9,.2));
+  return {gnd:"g",vmax:7,iref:2,live:true,nodes,edges,clock:motClock()};
+}
+const motClock=()=>({t:null,scale:`shown ${MT.slow}× slower`+(BC.reduced?", in steps":"")});
+const mot={
+  circuit:s=>{ const d=s.shape==="bridge"?motBridge(s):motDC(s); d.clock.t="t = "+secs(s.t); return d; },
+  fresh:()=>({shape:"dc",V:MT.V,closed:false,held:false,heldT:0,load:0,hasLoad:false,w:0,t:0,tr:[],trace:false,Im:0,Ipk:0,peak:0,s1:false,s2:false,s3:false,s4:false,interlock:true,fuse:"ok",blow:0,fwd:false,rev:false}),
+  running:s=>s.shape==="bridge"?(s.s1||s.s2||s.s3||s.s4||Math.abs(s.w)>.5):(s.closed||s.held||Math.abs(s.w)>.5),
+  quantum:()=>MTAU*.35*MT.slow,
+  tick(s,sol,dt){
+    let ev=null; if(!dt) return ev;
+    const rem=dt/MT.slow, n=clamp(Math.ceil(rem/(MTAU/8)),1,400), h=rem/n; let o=null, I=0;
+    for(let i=0;i<n;i++){
+      o=solve(mot.circuit(s)); I=motI(s,o);
+      const w=s.w, nw=w+h/MT.J*(MT.k*I-Math.sign(w)*s.load-MT.b*w);
+      s.w=s.held?0:(w!==0&&nw*w<0&&Math.abs(MT.k*I)<=s.load)?0:nw;
+      s.Im=I; s.Ipk=Math.max(s.Ipk,Math.abs(I));
+    }
+    s.t+=rem; if(s.held) s.heldT+=dt;
+    const Is=Math.abs(o.I.src); s.peak=Math.max(s.peak,Is);
+    if(s.shape==="bridge"){ const wf=mWss(MT.V,0); if(s.w>.8*wf) s.fwd=true; if(s.w<-.8*wf) s.rev=true; }
+    if(s.fuse==="ok"&&s.shape==="bridge"&&Is>MT.fuse){ s.blow+=dt; if(BC.reduced||s.blow>.5){ s.fuse="blown"; ev="blow"; } } else if(Is<=MT.fuse) s.blow=0;
+    const N=s.tr.length; if(s.trace&&s.t<=5*MTAU&&(!N||s.t-s.tr[N-1][0]>=5*MTAU/200)) s.tr.push([s.t,Math.abs(I)]);
+    return ev;
+  },
+  busy:()=>false,
+  ro:{
+   speed:["Speed",s=>rpmTxt(s.w)], emf:["Back-EMF",s=>volts(+(MT.k*s.w).toFixed(2))], cur:["Current",(s,o)=>amps(motI(s,o))],
+   heat:["Heat",(s,o)=>watts(motI(s,o)*motI(s,o)*MT.R)], load:["Load",s=>s.hasLoad?mNm(s.load):"—"], supply:["Supply",s=>volts(s.V)],
+   fuse:["Fuse",s=>s.fuse==="blown"?"blown":MT.fuse+" A"], flow:["Supply flow",(s,o)=>amps(o.I.src)]
+  },
+  val:{I:s=>mIss(s.V,s.load), rpm:s=>rpmOf(mWss(s.V,s.load))},
+  fail:{blow:"fu"},
+  alt:(s,o)=>s.shape==="bridge"?`H-bridge of four switches, S1 ${s.s1?"closed":"open"}, S2 ${s.s2?"closed":"open"}, S3 ${s.s3?"closed":"open"}, S4 ${s.s4?"closed":"open"}, motor ${rpmTxt(s.w)}, supply flow ${amps(o.I.src)}, fuse ${s.fuse==="blown"?"blown":"intact"}.`
+   :`${s.V} volt supply, switch ${s.closed?"closed":"open"}, motor ${rpmTxt(s.w)} with back-EMF ${volts(MT.k*s.w)}, winding current ${amps(o.I.Rw)}${s.held?", shaft held":""}.`
+};
+
 BC.LESSONS={
  1:{
   xp:40, widget:loop, hotspot:{a:"sa",b:"sb"},
@@ -1709,6 +1789,56 @@ BC.LESSONS={
    ]
   }
  },
+ 13:{
+  xp:40, widget:mot, hotspot:{a:"sa",b:"sb"},
+  steps:[
+   {id:"start",kind:"predict",prompt:"Close the switch on a stopped motor. First current versus running current?",
+    insight:"A still rotor has no tower, so the whole supply drives the winding. Spinning builds the tower; the stream thins.",
+    setup:s=>{s.trace=true;}, ro:["speed","emf","cur"], cols:3,
+    choices:[{t:"About the same"},{t:"Far bigger at first",ok:1},{t:"Far smaller at first"}],
+    reveal:s=>{s.closed=true;s.t=0;s.tr=[];}, settled:s=>s.w>=.95*mWss(s.V,0), keep:(s,v)=>{v.Istart=s.Ipk;v.Irun=Math.abs(s.Im);}},
+   {id:"load",kind:"predict",prompt:"A load grips the shaft and the motor slows. Its current...?",
+    insight:"Slower means a shorter tower and a steeper slope. The motor draws whatever the load asks for.",
+    setup:s=>{s.closed=true;s.trace=true;s.w=mWss(s.V,0);}, ro:["speed","emf","cur","load"], cols:3,
+    choices:[{t:"Falls"},{t:"Stays put"},{t:"Rises",ok:1}],
+    reveal:s=>{s.load=.018;s.hasLoad=true;s.t=0;s.tr=[];}, settled:s=>s.t>=4*MTAU},
+   {id:"dragLoad",kind:"hit",prompt:"Drag the load until the current reads 3 A.",
+    insight:"More load, slower shaft, lower tower. Current is whatever slope the tower leaves.",
+    setup:s=>{s.closed=true;s.hasLoad=true;s.load=.008;s.w=mWss(s.V,.008);}, ro:["speed","emf","cur","load"],
+    sliders:[{k:"load",label:"Load",min:0,max:.03,step:.0005,fmt:s=>mNm(s.load)}],
+    target:{of:"I",to:3,tol:.05,show:t=>t+" A"}, keep:(s,v)=>{const I=mIss(s.V,s.load);v.Il=I;v.El=s.V-I*MT.R;}},
+   {id:"stall",kind:"do",prompt:"Grip the shaft and hold it still.",
+    insight:"Stopped, there is no tower. All 6 V falls across the winding: a huge stream, and it glows.",
+    setup:s=>{s.closed=true;s.w=mWss(s.V,0);}, ro:["speed","cur","heat"],
+    actions:[{label:s=>s.held?"Release shaft":"Hold shaft",run:s=>{s.held=!s.held;}}],
+    goal:s=>s.heldT>=1.5, keep:(s,v)=>{v.Istall=Math.abs(s.Im);}},
+   {id:"supply",kind:"hit",prompt:"Raise the supply until the shaft turns 7500 rpm.",
+    insight:"Speed follows the supply. The tower grows until a thin slope is left to push the current.",
+    setup:s=>{s.closed=true;s.V=2;s.w=mWss(2,0);}, ro:["supply","speed","emf","cur"],
+    sliders:[{k:"V",label:"Supply",min:1,max:6,step:.1,grip:{node:"e"}}],
+    target:{of:"rpm",to:7500,tol:.03,show:t=>t+" rpm"}, keep:(s,v)=>{v.w5=mWss(s.V,0);}},
+   {id:"bridge",kind:"do",prompt:"Spin the motor one way, then the other.",
+    insight:"Closing the other diagonal pair sends the flow through the winding backwards, so the shaft reverses.",
+    setup:s=>{s.shape="bridge";}, ro:["speed","cur","fuse"],
+    actions:[1,2,3,4].map(k=>({label:s=>`S${k} ${s["s"+k]?"closed":"open"}`,run:s=>{ const key="s"+k, mate="s"+({1:3,2:4,3:1,4:2})[k]; s[key]=!s[key]; if(s[key]&&s.interlock) s[mate]=false; }})),
+    goal:s=>s.fwd&&s.rev},
+   {id:"short",kind:"predict",prompt:"Close S1 and S3, both switches on the left. The supply sees...?",
+    insight:"Both switches are almost wires, so nothing limits the flow. The fuse gave up first.",
+    setup:s=>{s.shape="bridge";s.interlock=false;}, ro:["flow","fuse"], cols:3,
+    choices:[{t:"A spinning motor"},{t:"A dead short",ok:1},{t:"Nothing at all"}],
+    reveal:s=>{s.s1=true;s.s3=true;}, settled:s=>s.fuse==="blown", keep:(s,v)=>{v.Ishort=s.peak;}}
+  ],
+  end:{
+   prompt:"These are the equations. Every number is yours.",
+   rows:[
+    {eq:"I = (V − E) / R",what:"Current is what the tower leaves of the supply",step:3,need:["Il","El"],show:v=>`(${MT.V} V − ${fmt(v.El,"V",3)}) / ${fmt(MT.R,"Ω")} = ${fmt(v.Il,"A",3)}`},
+    {eq:"E = k · ω",what:"The tower grows with speed",step:5,need:["w5"],show:v=>{ const w=Math.round(v.w5); return `${MT.k} V·s/rad × ${w} rad/s = ${fmt(MT.k*w,"V",3)}`; }},
+    {eq:"I = V / R",what:"Stalled: no tower at all",step:4,need:["Istall"],show:v=>`${MT.V} V / ${fmt(MT.R,"Ω")} = ${fmt(v.Istall,"A",3)}`},
+    {eq:"P = I² · R",what:"Heat in the held winding",step:4,need:["Istall"],show:v=>`(${fmt(v.Istall,"A",3)})² × ${fmt(MT.R,"Ω")} = ${fmt(v.Istall*v.Istall*MT.R,"W",3)}`},
+    {eq:"I = V / R",what:"A bridge shorted: only the switches resist",step:7,need:["Ishort"],show:v=>`${MT.V} V / ${fmt(2*MT.Ron,"Ω")} = ${fmt(v.Ishort,"A",2)}`}
+   ]
+  }
+ },
  14:{
   xp:40, widget:ac,
   steps:[
@@ -1935,6 +2065,7 @@ BC.mountLesson=function(host,n,opts={}){
     if(step.kind==="predict") h+=`<div class="lsCh" style="--cols:${step.cols||2}">`+step.choices.map((ch,k)=>`<button type="button" class="btn" data-c="${k}">${esc(ch.t)}</button>`).join("")+`</div>`;
     if(step.kind==="probe") h+=`<div class="lsMeter"><div class="lsRead"><span class="k">Meter</span><span class="v" aria-live="polite">—</span></div>`+step.targets.map((t,k)=>`<div class="lsTick" data-t="${k}"><span>${esc(t.t)}</span><b>—</b></div>`).join("")+`</div>`;
     ui.c.innerHTML=h;
+    ui.c.classList.toggle("many",(step.actions||[]).length>2);   /* four switches sit two by two */
     $$("input[type=range]",ui.c).forEach(inp=>{ const sd=sliders.find(x=>x.k===inp.dataset.k); inp.value=sd.log?Math.log10(s[sd.k]):s[sd.k];
       inp.addEventListener("input",()=>{ s[sd.k]=sd.log?round3(Math.pow(10,+inp.value)):+inp.value; update(); kick(); }); });
     $$(".lsAct",ui.c).forEach(b=>b.addEventListener("click",()=>{ const a=step.actions[+b.dataset.a]; if(b.disabled) return; a.run(s); BC.beep("click"); syncSliders(); update(); kick(); }));
